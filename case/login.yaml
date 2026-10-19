@@ -1,16 +1,16 @@
 - name: 登录成功
-  url: http://127.0.0.1:9300/login
+  url: /login
   method: POST
   params:
-    user: "Stefan"
-    pwd: "940420"
+    user: "test001"
+    pwd: "right123"
   expect:
     code: 0
 - name: 登录失败
-  url: http://127.0.0.1:9300/login
+  url: /login
   method: POST
   params:
-    user: "Stefan"
+    user: "test001"
     pwd: "wrong"
   expect:
     code: 1
