@@ -1,0 +1,39 @@
+<meta charset="utf-8">
+<style>
+  table { border-collapse: collapse; }
+  th, td { border: 1px solid #999; padding: 6px 10px; text-align: left; }
+  .PASS { background: #2e7d32; color: white; }
+  .FAIL { background: #c62828; color: white; }
+  .FLAKY { background: #ef6c00; color: white; }
+  td.PASS, td.FAIL, td.FLAKY { text-align: center; font-weight: bold; }
+</style>
+<h1>测试报告</h1>
+<p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}</p>
+<table>
+  <thead>
+    <tr>
+      <th>用例名</th>
+      <th>判决</th>
+      <th>预期</th>
+      <th>实际</th>
+      <th>详情</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in results %}
+    <tr>
+      <td>{{ row.name }}</td>
+      <td class="{{ row.result }}">{{ row.result }}</td>
+      <td>{{ row.expect }}</td>
+      <td>{{ row.actual }}</td>
+      <td>
+        <details>
+          <summary>展开</summary>
+          <p>{{ row.method }} {{ row.url }}</p>
+          <p>{{ row.params }}</p>
+        </details>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>

@@ -1,5 +1,7 @@
 from engine.case_loader import load_cases, load_config
 from engine.request_sender import send_case
+from pathlib import Path
+import jinja2
 
 cases = load_cases()
 config = load_config()
@@ -12,6 +14,10 @@ results = []
 
 for case in cases:
     result = None
+    safe_params = case["params"].copy()
+    for key in safe_params:
+        if "pwd" in key or "pass" in key:
+            safe_params[key] = "***"
     for attempt in range(RETRY_COUNT):
         result = send_case(case)
         if result is not None:
@@ -19,15 +25,34 @@ for case in cases:
     if result is None:
         flaky = flaky + 1
         print(case["name"], "环境抖动")
-        results.append({'name':case["name"],'result':'FLAKY','expect':case["expect"]["code"],'actual':None})# 发了三次连判决都没有：记环境抖动
+        results.append({'name':case["name"],'result':'FLAKY','expect':case["expect"]["code"],'actual':None,'method': case["method"],'url': case["url"],'params': safe_params})# 发了三次连判决都没有：记环境抖动
     elif result["code"] == case["expect"]["code"]:
         passed=passed+1      # 老三样：passed 加一，打 用例名 PASS
         print(case["name"],'PASS')
-        results.append({'name':case["name"],'result':'PASS','expect':case["expect"]["code"],'actual':result["code"]})
+        results.append({'name':case["name"],'result':'PASS','expect':case["expect"]["code"],'actual':result["code"],'method': case["method"],'url': case["url"],'params': safe_params})
     else:
         failed=failed+1
         print(case["name"],'FAIL')
-        results.append({'name':case["name"],'result':failed,'expect':case["expect"]["code"],'actual':result["code"]})# 老三样：failed 加一，打 用例名 FAIL
+        results.append({'name':case["name"],'result':failed,'expect':case["expect"]["code"],'actual':result["code"],'method': case["method"],'url': case["url"],'params': safe_params})# 老三样：failed 加一，打 用例名 FAIL
 
 print(f"共{len(cases)}条，过{passed}，挂{failed}，抖{flaky}")
 print(results)
+
+base = Path(__file__).parent
+report_dir = base / config["report_dir"]
+report_dir.mkdir(exist_ok=True)
+
+env = jinja2.Environment(
+    loader=jinja2.FileSystemLoader(str(base / "templates")),
+    autoescape=True,
+)
+tpl = env.get_template("report.html")
+html = tpl.render(
+    results=results,
+    total=len(cases),
+    passed=passed,
+    failed=failed,
+    flaky=flaky,
+)
+(report_dir / "report.html").write_text(html, encoding="utf-8")
+print("报告生成好了:", report_dir / "report.html")
