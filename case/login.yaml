@@ -2,15 +2,28 @@
   url: /login
   method: POST
   params:
-    user: "test001"
+    user: test001
     pwd: "right123"
   expect:
-    code: 0
+    - field: code
+      op: eq
+      value: 0
+    - field: ok
+      op: eq
+      value: true
+    - field: token
+      op: not_null
+
 - name: 登录失败
   url: /login
   method: POST
   params:
-    user: "test001"
+    user: test001
     pwd: "wrong"
   expect:
-    code: 1
+    - field: code
+      op: eq
+      value: 1
+    - field: ok
+      op: eq
+      value: false

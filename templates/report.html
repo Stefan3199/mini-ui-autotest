@@ -6,6 +6,7 @@
   .FAIL { background: #c62828; color: white; }
   .FLAKY { background: #ef6c00; color: white; }
   td.PASS, td.FAIL, td.FLAKY { text-align: center; font-weight: bold; }
+    .reason { color: #c62828; }
 </style>
 <h1>测试报告</h1>
 <p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}</p>
@@ -31,6 +32,24 @@
           <summary>展开</summary>
           <p>{{ row.method }} {{ row.url }}</p>
           <p>{{ row.params }}</p>
+          {% if row.reason %}
+          <p class="reason">没中：{{ row.reason }}</p>
+          {% endif %}
+          <table>
+            <thead>
+              <tr><th>断言</th><th>期望</th><th>实际</th><th>结果</th></tr>
+            </thead>
+            <tbody>
+            {% for c in row.checks %}
+              <tr>
+                <td>{{ c.field }}</td>
+                <td>{{ c.expect }}</td>
+                <td>{{ c.actual }}</td>
+                <td>{% if c.ok %}中{% else %}没中{% endif %}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
         </details>
       </td>
     </tr>

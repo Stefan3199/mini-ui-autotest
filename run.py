@@ -2,6 +2,7 @@ from engine.case_loader import load_cases, load_config
 from engine.request_sender import send_case
 from pathlib import Path
 import jinja2
+from engine.assertion import run_checks, describe_expect, describe_actual, describe_bad
 
 cases = load_cases()
 config = load_config()
@@ -14,26 +15,42 @@ results = []
 
 for case in cases:
     result = None
-    safe_params = case["params"].copy()
-    for key in safe_params:
-        if "pwd" in key or "pass" in key:
-            safe_params[key] = "***"
+
     for attempt in range(RETRY_COUNT):
         result = send_case(case)
         if result is not None:
             break   # 拿到判决了，这趟不用再试，跳出发几次的圈
+
+    safe_params = case["params"].copy()
+    for key in safe_params:
+        if "pwd" in key or "pass" in key:
+            safe_params[key] = "***"
+    checks = []
+
+    bad = None
+    if result is not None:
+        checks = run_checks(result, case["expect"])
+        for row in checks:
+            if not row["ok"]:
+                bad = row
+                break
+
+    expect_text = describe_expect(case["expect"])
+    actual_text = describe_actual(result, case["expect"]) if result is not None else None
+    reason_text = describe_bad(bad)
+
     if result is None:
         flaky = flaky + 1
         print(case["name"], "环境抖动")
-        results.append({'name':case["name"],'result':'FLAKY','expect':case["expect"]["code"],'actual':None,'method': case["method"],'url': case["url"],'params': safe_params})# 发了三次连判决都没有：记环境抖动
-    elif result["code"] == case["expect"]["code"]:
-        passed=passed+1      # 老三样：passed 加一，打 用例名 PASS
-        print(case["name"],'PASS')
-        results.append({'name':case["name"],'result':'PASS','expect':case["expect"]["code"],'actual':result["code"],'method': case["method"],'url': case["url"],'params': safe_params})
+        results.append({'name': case["name"], 'result': 'FLAKY', 'expect': expect_text, 'actual': None, 'method': case["method"], 'url': case["url"], 'params': safe_params, 'reason': reason_text, 'checks': checks})
+    elif bad is None:
+        passed = passed + 1
+        print(case["name"], 'PASS')
+        results.append({'name': case["name"], 'result': 'PASS', 'expect': expect_text, 'actual': actual_text, 'method': case["method"], 'url': case["url"], 'params': safe_params, 'reason': reason_text, 'checks': checks})
     else:
-        failed=failed+1
-        print(case["name"],'FAIL')
-        results.append({'name':case["name"],'result':failed,'expect':case["expect"]["code"],'actual':result["code"],'method': case["method"],'url': case["url"],'params': safe_params})# 老三样：failed 加一，打 用例名 FAIL
+        failed = failed + 1
+        print(case["name"], 'FAIL', reason_text)
+        results.append({'name': case["name"], 'result': 'FAIL', 'expect': expect_text, 'actual': actual_text, 'method': case["method"], 'url': case["url"], 'params': safe_params, 'reason': reason_text, 'checks': checks})
 
 print(f"共{len(cases)}条，过{passed}，挂{failed}，抖{flaky}")
 print(results)
