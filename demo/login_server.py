@@ -40,6 +40,15 @@ class Handler(BaseHTTPRequestHandler):
 
 
     def do_GET(self):
+        if self.path == "/notfound":
+            payload = json.dumps({"code": 404, "msg": "not found"}).encode("utf-8")
+            self.send_response(404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
         if self.path == "/slow":
             time.sleep(3)
             reply = {"code": 0}

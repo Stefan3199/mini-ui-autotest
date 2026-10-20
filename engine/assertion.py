@@ -1,9 +1,14 @@
 def run_checks(result, expect):
+    body = result.get("body", {})
+    status_code = result.get("status_code")
     rows = []
     for item in expect:
         field = item["field"]
         op = item["op"]
-        actual = result.get(field)
+        if field == "status_code":
+            actual = status_code
+        else:
+            actual = body.get(field)
         if op == "eq":
             expected = item["value"]
             ok = actual == expected
@@ -29,11 +34,10 @@ def describe_expect(expect):
     return "，".join(parts)
 
 
-def describe_actual(result, expect):
+def describe_actual(checks):
     parts = []
-    for item in expect:
-        field = item["field"]
-        parts.append(f'{field}={result.get(field)}')
+    for c in checks:
+        parts.append(f"{c['field']}={c['actual']}")
     return "，".join(parts)
 
 

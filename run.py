@@ -48,7 +48,7 @@ for case in cases:
                 break
 
     expect_text = describe_expect(case["expect"])
-    actual_text = describe_actual(result, case["expect"]) if result is not None else None
+    actual_text = describe_actual(checks) if result is not None else None
     reason_text = describe_bad(bad)
 
     if result is None:

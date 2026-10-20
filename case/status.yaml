@@ -1,0 +1,25 @@
+- name: 状态码 200
+  tags: [status]
+  url: /echo
+  method: GET
+  params: {}
+  expect:
+    - field: status_code
+      op: eq
+      value: 200
+    - field: code
+      op: eq
+      value: 0
+
+- name: 状态码 404
+  tags: [status]
+  url: /notfound
+  method: GET
+  params: {}
+  expect:
+    - field: status_code
+      op: eq
+      value: 404
+    - field: code
+      op: eq
+      value: 404

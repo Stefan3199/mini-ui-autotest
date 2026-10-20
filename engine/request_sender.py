@@ -11,7 +11,7 @@ def send_case(case):
         else:
             r = requests.get(url, params=params,headers = case.get("headers", {}),timeout=case.get("timeout", 5))
 
-        return r.json()
+        return {"status_code": r.status_code, "body": r.json()}
     except requests.exceptions.RequestException:
         return None
 
