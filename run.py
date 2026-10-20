@@ -2,9 +2,16 @@ from engine.case_loader import load_cases, load_config
 from engine.request_sender import send_case
 from pathlib import Path
 import jinja2
+import argparse
 from engine.assertion import run_checks, describe_expect, describe_actual, describe_bad
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--tag", help="只跑带这个标签的用例")
+args = parser.parse_args()
 cases = load_cases()
+if args.tag:
+    cases = [case for case in cases if args.tag in case.get("tags", [])]
+    print(f"筛选标签：{args.tag}，共{len(cases)}条")
 config = load_config()
 RETRY_COUNT = config["retry_count"]
 
@@ -75,6 +82,7 @@ html = tpl.render(
     passed=passed,
     failed=failed,
     flaky=flaky,
+    tag=args.tag or "全部",
 )
 (report_dir / "report.html").write_text(html, encoding="utf-8")
 print("报告生成好了:", report_dir / "report.html")

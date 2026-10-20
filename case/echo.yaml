@@ -1,4 +1,5 @@
 - name: 用例覆盖请求头
+  tags: [header]
   url: /echo
   method: GET
   params: {}
@@ -13,6 +14,7 @@
       value: abc123
 
 - name: 使用配置默认请求头
+  tags: [header]
   url: /echo
   method: GET
   params: {}
