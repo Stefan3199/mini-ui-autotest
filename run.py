@@ -22,6 +22,11 @@ for case in cases:
             break   # 拿到判决了，这趟不用再试，跳出发几次的圈
 
     safe_params = case["params"].copy()
+    safe_headers = case["headers"].copy()
+    for key in safe_headers:
+        if "token" in key.lower() or "auth" in key.lower() or "key" in key.lower():
+            safe_headers[key] = "***"
+
     for key in safe_params:
         if "pwd" in key or "pass" in key:
             safe_params[key] = "***"
@@ -42,15 +47,15 @@ for case in cases:
     if result is None:
         flaky = flaky + 1
         print(case["name"], "环境抖动")
-        results.append({'name': case["name"], 'result': 'FLAKY', 'expect': expect_text, 'actual': None, 'method': case["method"], 'url': case["url"], 'params': safe_params, 'reason': reason_text, 'checks': checks})
+        results.append({'name': case["name"], 'result': 'FLAKY', 'expect': expect_text, 'actual': None, 'method': case["method"], 'url': case["url"], 'params': safe_params, 'reason': reason_text, 'checks': checks,'headers': safe_headers})
     elif bad is None:
         passed = passed + 1
         print(case["name"], 'PASS')
-        results.append({'name': case["name"], 'result': 'PASS', 'expect': expect_text, 'actual': actual_text, 'method': case["method"], 'url': case["url"], 'params': safe_params, 'reason': reason_text, 'checks': checks})
+        results.append({'name': case["name"], 'result': 'PASS', 'expect': expect_text, 'actual': actual_text, 'method': case["method"], 'url': case["url"], 'params': safe_params, 'reason': reason_text, 'checks': checks,'headers': safe_headers})
     else:
         failed = failed + 1
         print(case["name"], 'FAIL', reason_text)
-        results.append({'name': case["name"], 'result': 'FAIL', 'expect': expect_text, 'actual': actual_text, 'method': case["method"], 'url': case["url"], 'params': safe_params, 'reason': reason_text, 'checks': checks})
+        results.append({'name': case["name"], 'result': 'FAIL', 'expect': expect_text, 'actual': actual_text, 'method': case["method"], 'url': case["url"], 'params': safe_params, 'reason': reason_text, 'checks': checks,'headers': safe_headers})
 
 print(f"共{len(cases)}条，过{passed}，挂{failed}，抖{flaky}")
 print(results)

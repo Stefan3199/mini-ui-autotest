@@ -38,6 +38,20 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+
+    def do_GET(self):
+        if self.path != "/echo":
+            self.send_response(404)
+            self.end_headers()
+            return
+        reply = {"code": 0, "x_token": self.headers.get("X-Token", "")}
+        payload = json.dumps(reply).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def log_message(self, format, *args):
         print("[demo]", format % args)
 

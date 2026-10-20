@@ -1,3 +1,5 @@
 base_url: "http://127.0.0.1:9300"
 report_dir: "report"
 retry_count: 3
+headers:
+  X-Token: default-token

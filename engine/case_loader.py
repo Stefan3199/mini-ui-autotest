@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]         # 常量一：项目根，用 __file__ 那套往上退两格
 CONFIG_FILE = Path(__file__).resolve().parents[1] / "config" / "config.yaml"  # 常量二：项目根 接 config 接 config.yaml
-CASE_FILE = Path(__file__).resolve().parents[1] / "case" / "login.yaml"   # 常量三：项目根 接 case 接 login.yaml
+CASE_DIR = Path(__file__).resolve().parents[1] / "case"  # 常量三：项目根 接 case 接 login.yaml
 
 
 def load_config():
@@ -14,11 +14,16 @@ def load_config():
 
 def load_cases():
     config = load_config()
-    with open(CASE_FILE, encoding="utf-8") as f:
-        cases = yaml.safe_load(f)
+    default_headers = config.get("headers", {})
+    cases = []
+    for file in sorted(CASE_DIR.glob("*.yaml")):
+        with open(file, encoding="utf-8") as f:
+            cases.extend(yaml.safe_load(f) or [])
     for case in cases:
         case["url"] = config["base_url"] + case["url"]
-    return cases             # 先拿 base_url，再读 CASE_FILE，逐条把地址接成完整的，交出整张表
+        case_headers = case.get("headers") or {}
+        case["headers"] = {**default_headers, **case_headers}
+    return cases
 
 
 if __name__ == "__main__":

@@ -1,0 +1,25 @@
+- name: 用例覆盖请求头
+  url: /echo
+  method: GET
+  params: {}
+  headers:
+    X-Token: abc123
+  expect:
+    - field: code
+      op: eq
+      value: 0
+    - field: x_token
+      op: eq
+      value: abc123
+
+- name: 使用配置默认请求头
+  url: /echo
+  method: GET
+  params: {}
+  expect:
+    - field: code
+      op: eq
+      value: 0
+    - field: x_token
+      op: eq
+      value: default-token

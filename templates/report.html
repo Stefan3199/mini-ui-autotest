@@ -32,6 +32,7 @@
           <summary>展开</summary>
           <p>{{ row.method }} {{ row.url }}</p>
           <p>{{ row.params }}</p>
+          <p>请求头 {{ row.headers }}</p>
           {% if row.reason %}
           <p class="reason">没中：{{ row.reason }}</p>
           {% endif %}
