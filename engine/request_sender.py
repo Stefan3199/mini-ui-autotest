@@ -6,10 +6,10 @@ def send_case(case):
     params = case["params"]
     try:
         if method == "POST":
-            r = requests.post(url, json=params,headers = case.get("headers", {}))
+            r = requests.post(url, json=params,headers = case.get("headers", {}),timeout=case.get("timeout", 5))
 
         else:
-            r = requests.get(url, params=params,headers = case.get("headers", {}))
+            r = requests.get(url, params=params,headers = case.get("headers", {}),timeout=case.get("timeout", 5))
 
         return r.json()
     except requests.exceptions.RequestException:

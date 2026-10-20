@@ -15,6 +15,7 @@ def load_config():
 def load_cases():
     config = load_config()
     default_headers = config.get("headers", {})
+    default_timeout = config.get("timeout", 5)
     cases = []
     for file in sorted(CASE_DIR.glob("*.yaml")):
         with open(file, encoding="utf-8") as f:
@@ -23,6 +24,7 @@ def load_cases():
         case["url"] = config["base_url"] + case["url"]
         case_headers = case.get("headers") or {}
         case["headers"] = {**default_headers, **case_headers}
+        case["timeout"] = case.get("timeout", default_timeout)
     return cases
 
 
