@@ -1,5 +1,4 @@
 report/
-logs/
 .venv/
 __pycache__/
 .idea/
