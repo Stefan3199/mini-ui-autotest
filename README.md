@@ -1,8 +1,10 @@
 # mini-ui-autotest
 
-一个从零实现的接口自动化测试框架（v0.3）。用例写在 YAML 里，跑一条命令，出 HTML 报告。
+[![test](https://github.com/Stefan3199/mini-ui-autotest/actions/workflows/test.yml/badge.svg)](https://github.com/Stefan3199/mini-ui-autotest/actions/workflows/test.yml)
 
-名字里的 ui 是给后续 UI 自动化留的位置，v0.3 仍只做接口测试。
+一个从零实现的接口自动化测试框架（v0.4）。用例写在 YAML 里，跑一条命令，出 HTML 报告。
+
+名字里的 ui 是给后续 UI 自动化留的位置，v0.4 仍只做接口测试。
 
 ## 特性
 
@@ -14,6 +16,7 @@
 - **超时控制**：配置默认超时，用例可覆盖，超时记 FLAKY 不误判 FAIL
 - **标签筛选**：用例打 tags，命令行 `--tag` 只跑一组
 - **HTML 报告**：总账、判决、预期与实际对比、请求详情、逐条断言结果
+- **自动 CI**：push 或 PR 触发 GitHub Actions，跑测试并上传报告
 - **分层结构**：用例加载、请求发送、断言、调度各管一摊
 
 ## 快速开始
@@ -150,10 +153,26 @@ headers:
 - `FAIL`：有断言没中
 - `FLAKY`：重试次数用完仍没拿到响应，属于环境抖动，不算业务失败
 
+## 持续集成
+
+推送到 main 或开 PR 时，GitHub Actions 会自动：
+
+1. 安装依赖
+2. 启动 demo 被测服务
+3. 跑全部用例
+4. 上传 HTML 报告作为 artifact
+
+用例有 `FAIL` 或 `FLAKY` 时，进程返回 1，流水线标红。报告在 Actions 运行页的 Artifacts 里下载。
+
+工作流文件：`.github/workflows/test.yml`。
+
 ## 项目结构
 
 ```
 mini-ui-autotest/
+├── .github/
+│   └── workflows/
+│       └── test.yml       # GitHub Actions 工作流
 ├── case/                  # 用例
 ├── config/                # 配置
 ├── demo/                  # 被测 demo 服务
@@ -178,12 +197,13 @@ mini-ui-autotest/
 - 判决定三态而不是两态：`FAIL` 是接口回了但断言没中，`FLAKY` 是根本没拿到响应。
 - 报告里的参数和请求头在记账时脱敏：键名含 `pwd`、`pass`、`token`、`auth`、`key` 的值替换成 `***`。
 - 断言先出逐条结果表，判决和报告摘要都从这张表派生。
+- CI 看退出码不看屏幕输出，用例有挂或抖时 `run.py` 返回 1。
 
 ## Roadmap
 
 - v0.2（已完成）：headers、timeout、标签筛选
 - v0.3（已完成）：状态码断言、contains、gt、in
-- v0.4：CI（GitHub Actions）
+- v0.4（已完成）：GitHub Actions 持续集成
 - 远期：Playwright UI 自动化
 
 ## License
