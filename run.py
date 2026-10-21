@@ -1,7 +1,7 @@
 from engine.case_loader import load_cases, load_config
 from engine.request_sender import send_case
 from pathlib import Path
-import jinja2
+import jinja2,sys
 import argparse
 from engine.assertion import run_checks, describe_expect, describe_actual, describe_bad
 
@@ -86,3 +86,7 @@ html = tpl.render(
 )
 (report_dir / "report.html").write_text(html, encoding="utf-8")
 print("报告生成好了:", report_dir / "report.html")
+
+
+if failed > 0 or flaky > 0:
+    sys.exit(1)

@@ -1,0 +1,40 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: |
+          python demo/login_server.py &
+          for i in $(seq 1 20); do
+            if curl -s http://127.0.0.1:9300/echo > /dev/null; then
+              echo "server ready"
+              break
+            fi
+            sleep 1
+          done
+          python run.py
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report
+          path: report/report.html
