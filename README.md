@@ -153,6 +153,10 @@ headers:
 - `FAIL`：有断言没中
 - `FLAKY`：重试次数用完仍没拿到响应，属于环境抖动，不算业务失败
 
+10 条用例全绿时长这样：
+
+![测试报告](docs/images/report.png)
+
 ## 持续集成
 
 推送到 main 或开 PR 时，GitHub Actions 会自动：
@@ -166,6 +170,10 @@ headers:
 
 工作流文件：`.github/workflows/test.yml`。
 
+运行记录：
+
+![GitHub Actions](docs/images/ci.png)
+
 ## 项目结构
 
 ```
@@ -176,6 +184,8 @@ mini-ui-autotest/
 ├── case/                  # 用例
 ├── config/                # 配置
 ├── demo/                  # 被测 demo 服务
+├── docs/
+│   └── images/            # README 截图
 ├── engine/
 │   ├── case_loader.py     # 读配置和用例，补齐 URL、请求头、超时
 │   ├── request_sender.py  # 发请求，返回状态码和响应体
