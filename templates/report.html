@@ -9,8 +9,8 @@
     .reason { color: #c62828; }
 </style>
 <h1>测试报告</h1>
-<p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}，总耗时 {{ total_ms }} ms{% if slowest %}，最慢 {{ slowest.name }} {{ slowest.elapsed }} ms{% endif %}</p>
-<p>筛选：{{ tag }}</p>
+<p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}，总耗时 {{ total_ms }} ms（用例合计 {{ case_sum }} ms）{% if slowest %}，最慢 {{ slowest.name }} {{ slowest.elapsed }} ms{% endif %}</p>
+<p>筛选：{{ tag }}　环境：{{ env_name }}　并发：{{ workers }}</p>
 <table>
   <thead>
     <tr>

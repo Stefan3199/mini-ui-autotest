@@ -1,0 +1,19 @@
+- name: 前置建用户后查存在
+  tags: [v06, setup]
+  setup:
+    - name: 建临时用户
+      url: /admin/user
+      method: POST
+      params: {user: tmp001}
+  teardown:
+    - name: 删临时用户
+      url: /admin/user/delete
+      method: POST
+      params: {user: tmp001}
+  url: /admin/user/get
+  method: GET
+  params: {user: tmp001}
+  expect:
+    - field: exists
+      op: eq
+      value: true

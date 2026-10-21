@@ -1,0 +1,19 @@
+- name: 慢接口一
+  tags: [v06, slow]
+  url: /slow
+  method: GET
+  params: {}
+  expect:
+    - field: code
+      op: eq
+      value: 0
+
+- name: 慢接口二
+  tags: [v06, slow]
+  url: /slow
+  method: GET
+  params: {}
+  expect:
+    - field: code
+      op: eq
+      value: 0

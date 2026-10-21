@@ -12,24 +12,33 @@
 
 import time,json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
 
 USERS = {"test001": "right123"}
+TEMP_USERS = set()
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        if self.path != "/login":
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length).decode("utf-8") if length else "{}"
+        data = json.loads(raw)
+
+        if self.path == "/login":
+            if USERS.get(data.get("user")) == data.get("pwd"):
+                reply = {"ok": True, "code": 0, "token": "TOK-abc-123"}
+            else:
+                reply = {"ok": False, "code": 1}
+        elif self.path == "/admin/user":
+            TEMP_USERS.add(data.get("user"))
+            reply = {"code": 0, "exists": data.get("user") in TEMP_USERS}
+        elif self.path == "/admin/user/delete":
+            TEMP_USERS.discard(data.get("user"))
+            reply = {"code": 0, "exists": data.get("user") in TEMP_USERS}
+        else:
             self.send_response(404)
             self.end_headers()
             return
-
-        length = int(self.headers.get("Content-Length", 0))
-        data = json.loads(self.rfile.read(length).decode("utf-8"))
-
-        if USERS.get(data.get("user")) == data.get("pwd"):
-            reply = {"ok": True, "code": 0, "token": "TOK-abc-123"}
-        else:
-            reply = {"ok": False, "code": 1}
 
         payload = json.dumps(reply).encode("utf-8")
         self.send_response(200)
@@ -40,7 +49,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
     def do_GET(self):
-        if self.path == "/notfound":
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
+
+        if path == "/notfound":
             payload = json.dumps({"code": 404, "msg": "not found"}).encode("utf-8")
             self.send_response(404)
             self.send_header("Content-Type", "application/json")
@@ -49,10 +62,12 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
             return
 
-        if self.path == "/slow":
+        if path == "/slow":
             time.sleep(3)
             reply = {"code": 0}
-        elif self.path == "/order":
+        elif path == "/admin/user/get":
+            reply = {"code": 0, "exists": query.get("user", [""])[0] in TEMP_USERS}
+        elif path == "/order":
             reply = {
                 "code": 0,
                 "data": {
@@ -61,9 +76,9 @@ class Handler(BaseHTTPRequestHandler):
                     "total": 99.5,
                 },
             }
-        elif self.path == "/echo":
+        elif path == "/echo":
             reply = {"code": 0, "x_token": self.headers.get("X-Token", "")}
-        elif self.path == "/user":
+        elif path == "/user":
             reply = {"code": 0, "name": "test001", "roles": ["admin", "tester"], "age": 30}
         else:
             self.send_response(404)
