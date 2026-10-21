@@ -1,13 +1,14 @@
 # mini-ui-autotest
 
-一个从零实现的接口自动化测试框架（v0.2）。用例写在 YAML 里，跑一条命令，出 HTML 报告。
+一个从零实现的接口自动化测试框架（v0.3）。用例写在 YAML 里，跑一条命令，出 HTML 报告。
 
-名字里的 ui 是给后续 UI 自动化留的位置，v0.2 仍只做接口测试。
+名字里的 ui 是给后续 UI 自动化留的位置，v0.3 仍只做接口测试。
 
 ## 特性
 
 - **YAML 数据驱动**：新增用例只改 YAML，不动代码
-- **多条件断言**：一条用例可同时判多个字段，支持 `eq` 与 `not_null`
+- **多条件断言**：一条用例可同时判多个字段，支持 `eq`、`not_null`、`contains`、`gt`、`in`
+- **状态码断言**：`status_code` 作为特殊字段，和响应体字段一起判
 - **失败自动重试**：只重试环境抖动，抖动与真失败分账
 - **请求头**：配置写公共头，用例可覆盖，报告里自动打码
 - **超时控制**：配置默认超时，用例可覆盖，超时记 FLAKY 不误判 FAIL
@@ -102,10 +103,38 @@ headers:
 - `params`：请求参数
 - `expect`：断言列表，全部命中才算 PASS
 
-断言支持：
+### 断言类型
 
 - `eq`：字段值与 `value` 相等
 - `not_null`：字段存在且不为 `None` 或空字符串
+- `contains`：实际值包含 `value`，字符串看子串，列表看元素
+- `gt`：实际值大于 `value`，只对数字
+- `in`：实际值在 `value` 列表里
+
+### 更多断言示例
+
+```yaml
+- name: 用户信息
+  tags: [assertion]
+  url: /user
+  method: GET
+  params: {}
+  expect:
+    - field: status_code
+      op: eq
+      value: 200
+    - field: roles
+      op: contains
+      value: admin
+    - field: age
+      op: gt
+      value: 18
+    - field: name
+      op: in
+      value: ["test001", "guest"]
+```
+
+`status_code` 是特殊字段，判的是 HTTP 状态码；其他字段都从响应 JSON 里取。
 
 ## 报告
 
@@ -130,7 +159,7 @@ mini-ui-autotest/
 ├── demo/                  # 被测 demo 服务
 ├── engine/
 │   ├── case_loader.py     # 读配置和用例，补齐 URL、请求头、超时
-│   ├── request_sender.py  # 发请求
+│   ├── request_sender.py  # 发请求，返回状态码和响应体
 │   └── assertion.py       # 断言引擎
 ├── templates/
 │   └── report.html        # 报告模板
@@ -144,15 +173,17 @@ mini-ui-autotest/
 
 - 模块之间不互相 import，组装放在 `run.py`，避免包模式和脚本模式两套路径打架。
 - `case_loader` 负责把用例加工成能直接发的样子：拼完整 URL，合并配置公共头和用例头，注入超时。
+- `request_sender` 返回 `{"status_code": ..., "body": ...}`，断言层普通字段走 `body`，状态码走外层。
 - 重试只服务环境抖动：`send_case` 拿不到响应时返回 `None`，`run.py` 负责重试；业务失败不重试。
 - 判决定三态而不是两态：`FAIL` 是接口回了但断言没中，`FLAKY` 是根本没拿到响应。
 - 报告里的参数和请求头在记账时脱敏：键名含 `pwd`、`pass`、`token`、`auth`、`key` 的值替换成 `***`。
-- 断言先出逐条结果表，判决从表里派生，报告也直接读这张表。
+- 断言先出逐条结果表，判决和报告摘要都从这张表派生。
 
 ## Roadmap
 
 - v0.2（已完成）：headers、timeout、标签筛选
-- v0.3：更多断言 op（`contains`、`gt`、`in`）、状态码断言、CI
+- v0.3（已完成）：状态码断言、contains、gt、in
+- v0.4：CI（GitHub Actions）
 - 远期：Playwright UI 自动化
 
 ## License
