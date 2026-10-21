@@ -2,9 +2,9 @@
 
 [![test](https://github.com/Stefan3199/mini-ui-autotest/actions/workflows/test.yml/badge.svg)](https://github.com/Stefan3199/mini-ui-autotest/actions/workflows/test.yml)
 
-一个从零实现的接口自动化测试框架（v0.6）。用例写在 YAML 里，跑一条命令，出 HTML 报告。
+一个从零实现的接口自动化测试框架（v0.7）。用例写在 YAML 里，跑一条命令，出 HTML 报告。
 
-名字里的 ui 是给后续 UI 自动化留的位置，v0.6 仍只做接口测试。
+名字里的 ui 是给后续 UI 自动化留的位置，v0.7 仍只做接口测试。
 
 ## 特性
 
@@ -22,6 +22,9 @@
 - **多环境**：`config/envs/<名字>.yaml` 只写差异，`--env test` 切过去，字典深合并
 - **前置后置**：用例可配 `setup` 和 `teardown` 请求列表，teardown 无论成败都执行
 - **并发执行**：`--workers 4` 多线程跑，带 `save` 或 `${}` 的用例自动分到串行通道
+- **数据文件驱动**：`data_file` 读 CSV 或 JSON，一行一组数据，CSV 的数值和布尔会自动转类型
+- **只跑失败的**：挂了的用例自动记下来，`--only-failed` 下一轮只跑这些
+- **运行历史**：报告里带最近几次运行的通过数和耗时，趋势一眼能看到
 - **HTML 报告**：总账、判决、耗时、预期与实际对比、请求详情、逐条断言结果
 - **自动 CI**：push 或 PR 触发 GitHub Actions，跑测试并上传报告
 - **分层结构**：用例加载、请求发送、断言、调度各管一摊
@@ -65,6 +68,12 @@ python run.py --tag smoke
 python run.py --env test
 python run.py --workers 4
 python run.py --tag slow --workers 2
+```
+
+上一轮有挂的用例，只跑这些：
+
+```bash
+python run.py --only-failed
 ```
 
 打开 `report/report.html` 看报告，用了 `--env` 时报告落在该环境配的目录里。
@@ -130,6 +139,8 @@ timeout: 10
 - `params`：请求参数
 - `save`：可选，把响应字段存进上下文，写成 `变量名: 字段路径`
 - `data`：可选，参数化数据列表，每行一组变量，用例按行展开
+- `data_file`：可选，从 CSV 或 JSON 读数据行，和 `data` 二选一
+- `serial`：可选，写 `true` 时这条用例永远走串行通道
 - `setup`：可选，前置请求列表，发主请求之前逐条跑
 - `teardown`：可选，后置请求列表，主请求之后必跑
 - `expect`：断言列表，全部命中才算 PASS
@@ -224,6 +235,41 @@ timeout: 10
 
 报告里会显示成 `参数化登录[1]`、`参数化登录[2]`，哪一组挂了能直接定位。
 
+### 数据文件
+
+数据行也可以放在外部文件里，CSV 用表头当变量名：
+
+```csv
+user,pwd,want
+test001,right123,0
+test001,wrong,1
+```
+
+```yaml
+- name: 数据文件驱动（CSV）
+  url: /login
+  method: POST
+  data_file: case/data/login.csv
+  params:
+    user: "${user}"
+    pwd: "${pwd}"
+  expect:
+    - field: code
+      op: eq
+      value: "${want}"
+```
+
+JSON 写成对象数组，类型原样保留：
+
+```json
+[
+  {"user": "test001", "pwd": "right123", "want": 0},
+  {"user": "test001", "pwd": "wrong", "want": 1}
+]
+```
+
+CSV 里全是字符串，读进来会按内容转一次：`true` / `false` 转布尔，纯数字转整数，带小数点的转浮点，其余保留字符串。`data` 和 `data_file` 只能给一个，两个都写会直接报错。
+
 ### 前置与后置
 
 ```yaml
@@ -253,13 +299,14 @@ setup 里任何一步没拿到响应，这条用例直接判 FAIL，主请求不
 
 `--workers 4` 开四个线程。带 `save` 或者引用了 `${}` 的用例会自动分到串行通道，避免后一条拿到空 token；其余并发跑，报告仍按用例原始顺序排。
 
-并发适合只读接口。会改服务端共享状态的用例（比如建用户、删用户）建议单独用 `--tag` 串行跑，自动识别只处理变量依赖，管不了服务端数据。
+并发适合只读接口。会改服务端共享状态的用例（比如建用户、删用户）在用例里写 `serial: true`，这条就固定走串行通道。
 
 ## 报告
 
 报告是单个 HTML 文件，包含：
 
 - 顶部总账：共几条，过、挂、抖各几条，墙钟总耗时和用例耗时合计，最慢用例，当前筛选、环境、并发数
+- 最近几次运行：时间、环境、筛选、通过数、墙钟耗时，最多显示五条
 - 每条用例：名字、判决、耗时、预期摘要、实际摘要
 - 详情折叠：请求方法、地址、参数、请求头、存下的变量，失败原因，逐条断言结果
 
@@ -269,7 +316,7 @@ setup 里任何一步没拿到响应，这条用例直接判 FAIL，主请求不
 - `FAIL`：有断言没中
 - `FLAKY`：重试次数用完仍没拿到响应，属于环境抖动，不算业务失败
 
-18 条用例全绿时长这样：
+22 条用例全绿时长这样：
 
 ![测试报告](docs/images/report.png)
 
@@ -298,13 +345,14 @@ mini-ui-autotest/
 │   └── workflows/
 │       └── test.yml       # GitHub Actions 工作流
 ├── case/                  # 用例
+│   └── data/              # 数据文件：login.csv、login.json
 ├── config/                # 配置
 │   └── envs/              # 环境覆盖：dev、test
 ├── demo/                  # 被测 demo 服务
 ├── docs/
 │   └── images/            # README 截图
 ├── engine/
-│   ├── case_loader.py     # 读配置和用例，补齐 URL、请求头、超时，展开参数化
+│   ├── case_loader.py     # 读配置和用例，深合并环境，展开参数化，读数据文件
 │   ├── request_sender.py  # 发请求，返回状态码和响应体
 │   ├── assertion.py       # 断言引擎，含嵌套字段取值
 │   └── variables.py       # 变量替换 ${name}
@@ -334,6 +382,10 @@ mini-ui-autotest/
 - setup 失败就不发主请求，teardown 一定执行，它失败也判 FAIL。
 - 并发按依赖自动切通道，`save` 和 `${}` 是判定依据，不靠人工标注。
 - 报告的墙钟耗时和用例耗时合计分开列，并发时两个数差多少就知道省了多少。
+- CSV 读到全是字符串，按内容转一次类型，否则 `0` 和 `"0"` 比不相等。
+- `data` 和 `data_file` 二选一，同时写直接报错，避免「到底跑了哪份数据」说不清。
+- 失败清单和运行历史都写在报告目录，按环境隔离，`--only-failed` 重跑时只认同一环境的上次结果。
+- `serial: true` 是人工兜底：自动识别只管变量依赖，改服务端共享状态的用例自己声明。
 - CI 看退出码不看屏幕输出，用例有挂或抖时 `run.py` 返回 1。
 
 ## Roadmap
@@ -343,6 +395,7 @@ mini-ui-autotest/
 - v0.4（已完成）：GitHub Actions 持续集成
 - v0.5（已完成）：嵌套字段、regex/len/type、变量传递、参数化、耗时统计
 - v0.6（已完成）：多环境、setup/teardown、并发执行
+- v0.7（已完成）：外部数据文件、只跑失败用例、运行历史
 - 远期：Playwright UI 自动化
 
 ## License
