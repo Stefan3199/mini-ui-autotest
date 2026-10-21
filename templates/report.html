@@ -5,13 +5,33 @@
   .PASS { background: #2e7d32; color: white; }
   .FAIL { background: #c62828; color: white; }
   .FLAKY { background: #ef6c00; color: white; }
-  td.PASS, td.FAIL, td.FLAKY { text-align: center; font-weight: bold; }
+  .SKIP { background: #607d8b; color: white; }
+  td.PASS, td.FAIL, td.FLAKY, td.SKIP { text-align: center; font-weight: bold; }
+  .trend { display: flex; align-items: flex-end; gap: 12px; height: 100px; margin: 8px 0 4px; }
+  .trend .item { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+  .trend .rate { font-size: 12px; color: #555; margin-bottom: 4px; }
+  .trend .bar { width: 30px; background: #2e7d32; border-radius: 2px 2px 0 0; }
+  .trend .bar.part { background: #ef6c00; }
+  .trend .bar.bad { background: #c62828; }
+  .trend .when { font-size: 11px; color: #777; margin-top: 4px; }
   .retried { font-weight: normal; font-size: 12px; }
     .reason { color: #c62828; }
 </style>
 <h1>测试报告</h1>
-<p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}{% if retried %}，重跑通过 {{ retried }} 条{% endif %}，总耗时 {{ total_ms }} ms（用例合计 {{ case_sum }} ms）{% if slowest %}，最慢 {{ slowest.name }} {{ slowest.elapsed }} ms{% endif %}</p>
+<p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}，跳{{ skipped }}{% if retried %}，重跑通过 {{ retried }} 条{% endif %}，总耗时 {{ total_ms }} ms（用例合计 {{ case_sum }} ms）{% if slowest %}，最慢 {{ slowest.name }} {{ slowest.elapsed }} ms{% endif %}</p>
 <p>筛选：{{ tag }}　环境：{{ env_name }}　并发：{{ workers }}</p>
+{% if trend %}
+<h3>最近 {{ trend | length }} 次通过率</h3>
+<div class="trend">
+  {% for item in trend %}
+  <div class="item">
+    <div class="rate">{{ item.passed }}/{{ item.total }}</div>
+    <div class="bar{% if item.rate < 50 %} bad{% elif item.rate < 100 %} part{% endif %}" style="height: {{ item.height }}px"></div>
+    <div class="when">{{ item.label }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 {% if recent %}
 <h3>最近 {{ recent | length }} 次运行</h3>
 <table>

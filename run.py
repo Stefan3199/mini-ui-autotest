@@ -303,6 +303,17 @@ history = history[-20:]
 history_file.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
 recent = list(reversed(history[-5:]))
 
+trend = []
+for item in history[-10:]:
+    total_run = item["total"] or 1
+    trend.append({
+        "label": item["time"][11:],
+        "passed": item["passed"],
+        "total": item["total"],
+        "rate": round(item["passed"] / total_run * 100),
+        "height": 6 + round(item["passed"] / total_run * 55),
+    })
+
 env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(str(base / "templates")),
     autoescape=True,
@@ -313,6 +324,7 @@ html = tpl.render(
     total=len(cases),
     passed=passed,
     failed=failed,
+    skipped=skipped,
     flaky=flaky,
     retried=retried_total,
     tag=args.tag or "全部",
@@ -322,7 +334,9 @@ html = tpl.render(
     env_name=args.env or "default",
     workers=args.workers,
     recent=recent,
+    trend=trend,
 )
+
 report_file = report_dir / "report.html"
 report_file.write_text(html, encoding="utf-8")
 
