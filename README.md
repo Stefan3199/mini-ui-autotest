@@ -2,20 +2,24 @@
 
 [![test](https://github.com/Stefan3199/mini-ui-autotest/actions/workflows/test.yml/badge.svg)](https://github.com/Stefan3199/mini-ui-autotest/actions/workflows/test.yml)
 
-一个从零实现的接口自动化测试框架（v0.4）。用例写在 YAML 里，跑一条命令，出 HTML 报告。
+一个从零实现的接口自动化测试框架（v0.5）。用例写在 YAML 里，跑一条命令，出 HTML 报告。
 
-名字里的 ui 是给后续 UI 自动化留的位置，v0.4 仍只做接口测试。
+名字里的 ui 是给后续 UI 自动化留的位置，v0.5 仍只做接口测试。
 
 ## 特性
 
 - **YAML 数据驱动**：新增用例只改 YAML，不动代码
-- **多条件断言**：一条用例可同时判多个字段，支持 `eq`、`not_null`、`contains`、`gt`、`in`
+- **多条件断言**：一条用例可同时判多个字段，支持 `eq`、`not_null`、`contains`、`gt`、`in`、`regex`、`len`、`type`
+- **嵌套字段**：`data.user.id`、`data.items.0.sku` 这种路径直接取，不用自己拆 JSON
 - **状态码断言**：`status_code` 作为特殊字段，和响应体字段一起判
 - **失败自动重试**：只重试环境抖动，抖动与真失败分账
+- **变量传递**：`save` 把响应字段存进上下文，后续用例用 `${token}` 引用
+- **参数化**：一条用例配 `data` 列表，多组数据各跑一遍，名字带序号
 - **请求头**：配置写公共头，用例可覆盖，报告里自动打码
 - **超时控制**：配置默认超时，用例可覆盖，超时记 FLAKY 不误判 FAIL
 - **标签筛选**：用例打 tags，命令行 `--tag` 只跑一组
-- **HTML 报告**：总账、判决、预期与实际对比、请求详情、逐条断言结果
+- **耗时统计**：每条用例计时，报告给出总耗时和最慢用例
+- **HTML 报告**：总账、判决、耗时、预期与实际对比、请求详情、逐条断言结果
 - **自动 CI**：push 或 PR 触发 GitHub Actions，跑测试并上传报告
 - **分层结构**：用例加载、请求发送、断言、调度各管一摊
 
@@ -104,6 +108,8 @@ headers:
 - `method`：GET 或 POST
 - `headers`：可选，用例级请求头，同名覆盖配置
 - `params`：请求参数
+- `save`：可选，把响应字段存进上下文，写成 `变量名: 字段路径`
+- `data`：可选，参数化数据列表，每行一组变量，用例按行展开
 - `expect`：断言列表，全部命中才算 PASS
 
 ### 断言类型
@@ -113,6 +119,11 @@ headers:
 - `contains`：实际值包含 `value`，字符串看子串，列表看元素
 - `gt`：实际值大于 `value`，只对数字
 - `in`：实际值在 `value` 列表里
+- `regex`：实际值（字符串）能匹配 `value` 里的正则
+- `len`：实际值长度等于 `value`，字符串、列表、字典都行
+- `type`：实际值类型等于 `value`，可选 `str`、`int`、`float`、`bool`、`list`、`dict`、`null`
+
+字段名支持点号路径，`data.user.id` 取嵌套对象，`data.items.0.sku` 用数字取列表元素。
 
 ### 更多断言示例
 
@@ -139,13 +150,65 @@ headers:
 
 `status_code` 是特殊字段，判的是 HTTP 状态码；其他字段都从响应 JSON 里取。
 
+### 变量传递
+
+前一条用例存，后一条用例用：
+
+```yaml
+- name: 登录并存 token
+  url: /login
+  method: POST
+  params: {user: test001, pwd: "right123"}
+  save:
+    token: token
+  expect:
+    - field: code
+      op: eq
+      value: 0
+
+- name: 用存下的 token 请求
+  url: /echo
+  method: GET
+  params: {}
+  headers:
+    X-Token: "${token}"
+  expect:
+    - field: x_token
+      op: eq
+      value: "${token}"
+```
+
+`${token}` 整个就是一个变量时保留原类型，夹在文字里就转成字符串。变量没定义直接判 FAIL，不会按字面量发出去。
+
+### 参数化
+
+一条用例配多组数据，`data` 里的每一行是一组变量：
+
+```yaml
+- name: 参数化登录
+  url: /login
+  method: POST
+  data:
+    - {user: test001, pwd: "right123", want: 0}
+    - {user: test001, pwd: "wrong", want: 1}
+  params:
+    user: "${user}"
+    pwd: "${pwd}"
+  expect:
+    - field: code
+      op: eq
+      value: "${want}"
+```
+
+报告里会显示成 `参数化登录[1]`、`参数化登录[2]`，哪一组挂了能直接定位。
+
 ## 报告
 
 报告是单个 HTML 文件，包含：
 
-- 顶部总账：共几条，过、挂、抖各几条，当前筛选的标签
-- 每条用例：名字、判决、预期摘要、实际摘要
-- 详情折叠：请求方法、地址、参数、请求头，失败原因，逐条断言结果
+- 顶部总账：共几条，过、挂、抖各几条，总耗时、最慢用例，当前筛选的标签
+- 每条用例：名字、判决、耗时、预期摘要、实际摘要
+- 详情折叠：请求方法、地址、参数、请求头、存下的变量，失败原因，逐条断言结果
 
 判决三态：
 
@@ -153,7 +216,7 @@ headers:
 - `FAIL`：有断言没中
 - `FLAKY`：重试次数用完仍没拿到响应，属于环境抖动，不算业务失败
 
-10 条用例全绿时长这样：
+15 条用例全绿时长这样：
 
 ![测试报告](docs/images/report.png)
 
@@ -187,9 +250,10 @@ mini-ui-autotest/
 ├── docs/
 │   └── images/            # README 截图
 ├── engine/
-│   ├── case_loader.py     # 读配置和用例，补齐 URL、请求头、超时
+│   ├── case_loader.py     # 读配置和用例，补齐 URL、请求头、超时，展开参数化
 │   ├── request_sender.py  # 发请求，返回状态码和响应体
-│   └── assertion.py       # 断言引擎
+│   ├── assertion.py       # 断言引擎，含嵌套字段取值
+│   └── variables.py       # 变量替换 ${name}
 ├── templates/
 │   └── report.html        # 报告模板
 ├── run.py                 # 入口：筛选、调度、重试、记账、出报告
@@ -207,6 +271,11 @@ mini-ui-autotest/
 - 判决定三态而不是两态：`FAIL` 是接口回了但断言没中，`FLAKY` 是根本没拿到响应。
 - 报告里的参数和请求头在记账时脱敏：键名含 `pwd`、`pass`、`token`、`auth`、`key` 的值替换成 `***`。
 - 断言先出逐条结果表，判决和报告摘要都从这张表派生。
+- 字段取值统一走 `pick`，点号拆路径，列表认数字下标，把嵌套和一层的写法合成一套。
+- 变量替换只在发送前做一次，报告里存的是替换后的参数，请求头仍然打码。
+- `save` 只在用例 PASS 后写上下文，失败用例的响应不能喂给后面的用例。
+- 变量没定义直接判 FAIL，不按字面量发出去，否则预期和实际都是 `${token}`，会假绿。
+- `type` 用 `type(actual) is want`，不用 `isinstance`：Python 里 `True` 也是 `int`，用 isinstance 判 int 会放过 bool。
 - CI 看退出码不看屏幕输出，用例有挂或抖时 `run.py` 返回 1。
 
 ## Roadmap
@@ -214,6 +283,7 @@ mini-ui-autotest/
 - v0.2（已完成）：headers、timeout、标签筛选
 - v0.3（已完成）：状态码断言、contains、gt、in
 - v0.4（已完成）：GitHub Actions 持续集成
+- v0.5（已完成）：嵌套字段、regex/len/type、变量传递、参数化、耗时统计
 - 远期：Playwright UI 自动化
 
 ## License
