@@ -52,6 +52,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/slow":
             time.sleep(3)
             reply = {"code": 0}
+        elif self.path == "/order":
+            reply = {
+                "code": 0,
+                "data": {
+                    "user": {"id": 7, "name": "test001"},
+                    "items": [{"sku": "A1"}, {"sku": "B2"}],
+                    "total": 99.5,
+                },
+            }
         elif self.path == "/echo":
             reply = {"code": 0, "x_token": self.headers.get("X-Token", "")}
         elif self.path == "/user":

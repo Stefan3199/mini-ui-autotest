@@ -1,0 +1,21 @@
+- name: 嵌套字段
+  tags: [v05, nested]
+  url: /order
+  method: GET
+  params: {}
+  expect:
+    - field: data.user.id
+      op: eq
+      value: 7
+    - field: data.items.0.sku
+      op: eq
+      value: "A1"
+    - field: data.user.name
+      op: regex
+      value: '^test\d+$'
+    - field: data.items
+      op: len
+      value: 2
+    - field: data.total
+      op: type
+      value: float

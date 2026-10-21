@@ -9,13 +9,14 @@
     .reason { color: #c62828; }
 </style>
 <h1>测试报告</h1>
-<p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}</p>
+<p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}，总耗时 {{ total_ms }} ms{% if slowest %}，最慢 {{ slowest.name }} {{ slowest.elapsed }} ms{% endif %}</p>
 <p>筛选：{{ tag }}</p>
 <table>
   <thead>
     <tr>
       <th>用例名</th>
       <th>判决</th>
+      <th>耗时</th>
       <th>预期</th>
       <th>实际</th>
       <th>详情</th>
@@ -26,6 +27,7 @@
     <tr>
       <td>{{ row.name }}</td>
       <td class="{{ row.result }}">{{ row.result }}</td>
+      <td>{{ row.elapsed }} ms</td>
       <td>{{ row.expect }}</td>
       <td>{{ row.actual }}</td>
       <td>
@@ -34,6 +36,9 @@
           <p>{{ row.method }} {{ row.url }}</p>
           <p>{{ row.params }}</p>
           <p>请求头 {{ row.headers }}</p>
+          {% if row.saved %}
+          <p>存变量 {{ row.saved }}</p>
+          {% endif %}
           {% if row.reason %}
           <p class="reason">没中：{{ row.reason }}</p>
           {% endif %}

@@ -25,7 +25,23 @@ def load_cases():
         case_headers = case.get("headers") or {}
         case["headers"] = {**default_headers, **case_headers}
         case["timeout"] = case.get("timeout", default_timeout)
-    return cases
+    return expand_cases(cases)
+
+def expand_cases(cases):
+    """带 data 列表的用例按行展开，每行单独算一条。"""
+    expanded = []
+    for case in cases:
+        rows = case.get("data")
+        if not rows:
+            expanded.append(case)
+            continue
+        for index, row in enumerate(rows, 1):
+            item = dict(case)
+            item.pop("data")
+            item["vars"] = row
+            item["name"] = f'{case["name"]}[{index}]'
+            expanded.append(item)
+    return expanded
 
 
 if __name__ == "__main__":

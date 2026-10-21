@@ -1,0 +1,25 @@
+- name: 登录并存 token
+  tags: [v05, chain]
+  url: /login
+  method: POST
+  params:
+    user: test001
+    pwd: "right123"
+  save:
+    token: token
+  expect:
+    - field: code
+      op: eq
+      value: 0
+
+- name: 用存下的 token 请求
+  tags: [v05, chain]
+  url: /echo
+  method: GET
+  params: {}
+  headers:
+    X-Token: "${token}"
+  expect:
+    - field: x_token
+      op: eq
+      value: "${token}"

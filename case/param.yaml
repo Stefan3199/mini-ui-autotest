@@ -1,0 +1,14 @@
+- name: 参数化登录
+  tags: [v05, param]
+  url: /login
+  method: POST
+  data:
+    - {user: test001, pwd: "right123", want: 0}
+    - {user: test001, pwd: "wrong", want: 1}
+  params:
+    user: "${user}"
+    pwd: "${pwd}"
+  expect:
+    - field: code
+      op: eq
+      value: "${want}"
