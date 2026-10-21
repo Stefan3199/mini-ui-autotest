@@ -5,6 +5,7 @@ import jinja2, sys
 import json
 import argparse
 import time
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from engine.assertion import run_checks, describe_expect, describe_actual, describe_bad, pick
 from engine.variables import render, MissingVar
@@ -14,6 +15,8 @@ parser.add_argument("--tag", help="只跑带这个标签的用例")
 parser.add_argument("--env", help="环境名，读 config/envs/<name>.yaml")
 parser.add_argument("--workers", type=int, default=1, help="并发线程数，默认 1")
 parser.add_argument("--only-failed", action="store_true", help="只跑上次失败的用例")
+parser.add_argument("--rerun", type=int, default=0, help="失败用例最多再跑几轮，默认 0")
+parser.add_argument("--list", action="store_true", help="只列出将要跑的用例，不发请求")
 args = parser.parse_args()
 
 cases = load_cases(args.env)
@@ -38,6 +41,14 @@ if args.only_failed:
     if not cases:
         print("上次没有失败的用例，不用重跑")
         sys.exit(0)
+
+if args.list:
+    for case in cases:
+        lane = "串行" if case.get("serial") else "并发"
+        tags = ",".join(case.get("tags", [])) or "-"
+        print(f'{case["name"]}  [{lane}]  标签 {tags}')
+    print(f"共{len(cases)}条")
+    sys.exit(0)
 
 
 def call(request):
@@ -69,7 +80,8 @@ def run_one(case, context):
     """跑一条用例：替换变量、跑 setup、发主请求、跑 teardown、判三态。"""
     row = {'index': case["index"], 'name': case["name"], 'result': 'PASS', 'expect': '',
            'actual': None, 'method': case["method"], 'url': case["url"], 'params': {},
-           'reason': '', 'checks': [], 'headers': {}, 'elapsed': 0.0, 'saved': {}}
+           'reason': '', 'checks': [], 'headers': {}, 'elapsed': 0.0, 'saved': {},
+           'lane': '串行' if case.get("serial") else '并发', 'retried': 0}
     start = time.perf_counter()
 
     try:
@@ -132,21 +144,83 @@ def run_one(case, context):
     return row
 
 
-ordered = [case for case in cases if case.get("serial")]
-parallel = [case for case in cases if not case.get("serial")]
+def run_alone(case):
+    """并发通道里的单条用例，各拿各的空上下文。"""
+    return run_one(case, {})
 
-context = {}
+
+def run_serial(batch):
+    """串行通道：一条跑完再跑下一条，上下文一路传下去。"""
+    context = {}
+    return [run_one(case, context) for case in batch]
+
+
+def run_parallel(batch, workers):
+    """并发通道：线程池分发，线程之间不共享上下文。"""
+    if workers > 1 and len(batch) > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return list(pool.map(run_alone, batch))
+    return [run_one(case, {}) for case in batch]
+
+
+def write_junit(rows, path, suite_name, wall_s):
+    """写 JUnit XML，CI 平台认这个格式。FAIL 用 failure，FLAKY 用 error。"""
+    failures = sum(1 for row in rows if row["result"] == "FAIL")
+    errors = sum(1 for row in rows if row["result"] == "FLAKY")
+    root = ET.Element("testsuites", name="mini-ui-autotest", tests=str(len(rows)),
+                      failures=str(failures), errors=str(errors), skipped="0",
+                      time=f"{wall_s:.3f}")
+    suite = ET.SubElement(root, "testsuite", name=suite_name, tests=str(len(rows)),
+                          failures=str(failures), errors=str(errors), skipped="0",
+                          time=f"{wall_s:.3f}",
+                          timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"))
+    for row in rows:
+        item = ET.SubElement(suite, "testcase", classname="mini-ui-autotest",
+                             name=row["name"], time=f'{row["elapsed"] / 1000:.3f}')
+        if row["result"] == "FAIL":
+            failure = ET.SubElement(item, "failure", message=row["reason"] or "断言未通过")
+            failure.text = f'预期：{row["expect"]}\n实际：{row["actual"]}'
+        elif row["result"] == "FLAKY":
+            ET.SubElement(item, "error", message=row["reason"] or "未拿到响应")
+        if row["retried"]:
+            note = ET.SubElement(item, "system-out")
+            note.text = f'第{row["retried"]}轮重跑后通过'
+    ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
+
+
+serial_cases = [case for case in cases if case.get("serial")]
+parallel_cases = [case for case in cases if not case.get("serial")]
+
 results = []
 run_start = time.perf_counter()
-for case in ordered:
-    results.append(run_one(case, context))
+results.extend(run_serial(serial_cases))
 
-if args.workers > 1 and parallel:
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        results.extend(pool.map(lambda case: run_one(case, {}), parallel))
-else:
-    for case in parallel:
-        results.append(run_one(case, {}))
+if parallel_cases:
+    results.extend(run_parallel(parallel_cases, args.workers))
+
+retried_total = 0
+for round_no in range(1, args.rerun + 1):
+    row_by_name = {row["name"]: row for row in results}
+    failed_serial = [case for case in serial_cases if row_by_name[case["name"]]["result"] == "FAIL"]
+    failed_parallel = [case for case in parallel_cases if row_by_name[case["name"]]["result"] == "FAIL"]
+    if not failed_serial and not failed_parallel:
+        break
+    print(f"第{round_no}轮重跑：串行{len(failed_serial)}条，并发{len(failed_parallel)}条")
+    if failed_serial:
+        # 串行通道整条重跑，顺序和变量依赖都不能断
+        for row in run_serial(serial_cases):
+            old = row_by_name[row["name"]]
+            if old["result"] == "FAIL" and row["result"] == "PASS":
+                row["retried"] = round_no
+                old.update(row)
+                retried_total += 1
+    if failed_parallel:
+        for row in run_parallel(failed_parallel, args.workers):
+            old = row_by_name[row["name"]]
+            if row["result"] == "PASS":
+                row["retried"] = round_no
+                old.update(row)
+                retried_total += 1
 
 results.sort(key=lambda row: row["index"])
 
@@ -157,7 +231,8 @@ failed = sum(1 for row in results if row["result"] == "FAIL")
 flaky = sum(1 for row in results if row["result"] == "FLAKY")
 slowest = max(results, key=lambda row: row["elapsed"]) if results else None
 
-print(f"共{len(cases)}条，过{passed}，挂{failed}，抖{flaky}")
+tail = f"，重跑通过{retried_total}条" if retried_total else ""
+print(f"共{len(cases)}条，过{passed}，挂{failed}，抖{flaky}{tail}")
 
 now = time.strftime("%Y-%m-%d %H:%M")
 failed_names = [row["name"] for row in results if row["result"] != "PASS"]
@@ -179,6 +254,7 @@ history.append({
     "passed": passed,
     "failed": failed,
     "flaky": flaky,
+    "retried": retried_total,
     "wall_ms": wall_ms,
 })
 history = history[-20:]
@@ -196,6 +272,7 @@ html = tpl.render(
     passed=passed,
     failed=failed,
     flaky=flaky,
+    retried=retried_total,
     tag=args.tag or "全部",
     total_ms=wall_ms,
     case_sum=case_sum,
@@ -204,8 +281,24 @@ html = tpl.render(
     workers=args.workers,
     recent=recent,
 )
-(report_dir / "report.html").write_text(html, encoding="utf-8")
-print("报告生成好了:", report_dir / "report.html")
+report_file = report_dir / "report.html"
+report_file.write_text(html, encoding="utf-8")
+
+junit_file = report_dir / "junit.xml"
+write_junit(results, junit_file, args.env or "default", wall_ms / 1000)
+
+archive_dir = report_dir / "archive"
+archive_dir.mkdir(exist_ok=True)
+stamp = time.strftime("%Y%m%d-%H%M%S")
+tag_part = args.tag or "all"
+archive_file = archive_dir / f'{stamp}_{args.env or "default"}_{tag_part}.html'
+archive_file.write_text(html, encoding="utf-8")
+for old in sorted(archive_dir.glob("*.html"))[:-20]:
+    old.unlink()
+
+print("报告生成好了:", report_file)
+print("JUnit 报告:", junit_file)
+print("本次归档:", archive_file)
 
 
 if failed > 0 or flaky > 0:

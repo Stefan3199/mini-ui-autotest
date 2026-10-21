@@ -6,10 +6,11 @@
   .FAIL { background: #c62828; color: white; }
   .FLAKY { background: #ef6c00; color: white; }
   td.PASS, td.FAIL, td.FLAKY { text-align: center; font-weight: bold; }
+  .retried { font-weight: normal; font-size: 12px; }
     .reason { color: #c62828; }
 </style>
 <h1>测试报告</h1>
-<p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}，总耗时 {{ total_ms }} ms（用例合计 {{ case_sum }} ms）{% if slowest %}，最慢 {{ slowest.name }} {{ slowest.elapsed }} ms{% endif %}</p>
+<p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}{% if retried %}，重跑通过 {{ retried }} 条{% endif %}，总耗时 {{ total_ms }} ms（用例合计 {{ case_sum }} ms）{% if slowest %}，最慢 {{ slowest.name }} {{ slowest.elapsed }} ms{% endif %}</p>
 <p>筛选：{{ tag }}　环境：{{ env_name }}　并发：{{ workers }}</p>
 {% if recent %}
 <h3>最近 {{ recent | length }} 次运行</h3>
@@ -45,7 +46,7 @@
   {% for row in results %}
     <tr>
       <td>{{ row.name }}</td>
-      <td class="{{ row.result }}">{{ row.result }}</td>
+      <td class="{{ row.result }}">{{ row.result }}{% if row.retried %}<div class="retried">重跑 {{ row.retried }} 次</div>{% endif %}</td>
       <td>{{ row.elapsed }} ms</td>
       <td>{{ row.expect }}</td>
       <td>{{ row.actual }}</td>

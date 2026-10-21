@@ -16,6 +16,7 @@ from urllib.parse import urlparse, parse_qs
 
 USERS = {"test001": "right123"}
 TEMP_USERS = set()
+FLIP = {"count": 0}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -65,6 +66,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/slow":
             time.sleep(3)
             reply = {"code": 0}
+        elif path == "/flip":
+            # 第一次失败，之后成功，用来试 --rerun
+            FLIP["count"] += 1
+            reply = {"code": 0 if FLIP["count"] > 1 else 1}
         elif path == "/admin/user/get":
             reply = {"code": 0, "exists": query.get("user", [""])[0] in TEMP_USERS}
         elif path == "/order":
