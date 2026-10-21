@@ -1,5 +1,6 @@
 - name: 前置建用户后查存在
   tags: [v06, setup]
+  serial: true
   setup:
     - name: 建临时用户
       url: /admin/user

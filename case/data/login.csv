@@ -1,0 +1,3 @@
+user,pwd,want
+test001,right123,0
+test001,wrong,1

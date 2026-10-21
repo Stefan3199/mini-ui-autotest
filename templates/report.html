@@ -11,6 +11,25 @@
 <h1>测试报告</h1>
 <p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}，总耗时 {{ total_ms }} ms（用例合计 {{ case_sum }} ms）{% if slowest %}，最慢 {{ slowest.name }} {{ slowest.elapsed }} ms{% endif %}</p>
 <p>筛选：{{ tag }}　环境：{{ env_name }}　并发：{{ workers }}</p>
+{% if recent %}
+<h3>最近 {{ recent | length }} 次运行</h3>
+<table>
+  <thead>
+    <tr><th>时间</th><th>环境</th><th>筛选</th><th>通过/总数</th><th>耗时</th></tr>
+  </thead>
+  <tbody>
+  {% for item in recent %}
+    <tr>
+      <td>{{ item.time }}</td>
+      <td>{{ item.env }}</td>
+      <td>{{ item.tag }}</td>
+      <td>{{ item.passed }}/{{ item.total }}</td>
+      <td>{{ item.wall_ms }} ms</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
 <table>
   <thead>
     <tr>

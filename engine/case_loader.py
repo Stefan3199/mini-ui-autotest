@@ -1,3 +1,4 @@
+import csv
 import json
 import yaml
 from pathlib import Path
@@ -47,6 +48,50 @@ def needs_order(case):
     return "${" in json.dumps(case, ensure_ascii=False)
 
 
+def coerce(value):
+    """CSV 里全是字符串，按内容转回 bool / int / float，转不了就保留原样。"""
+    text = value.strip()
+    if text.lower() == "true":
+        return True
+    if text.lower() == "false":
+        return False
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return float(text)
+    except ValueError:
+        return value
+
+
+def read_data_file(relative):
+    """读外部数据文件，返回一组字典。CSV 用表头当变量名，JSON 要求是对象数组。"""
+    path = ROOT / relative
+    if not path.exists():
+        raise SystemExit(f"找不到数据文件：{path}")
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            return [{key: coerce(value) for key, value in row.items()} for row in csv.DictReader(f)]
+    if suffix == ".json":
+        with open(path, encoding="utf-8") as f:
+            rows = json.load(f)
+        if not isinstance(rows, list):
+            raise SystemExit(f"JSON 数据文件要写成对象数组：{path}")
+        return rows
+    raise SystemExit(f"数据文件只认 .csv 和 .json：{path}")
+
+
+def case_rows(case):
+    """取用例的数据行，data 和 data_file 二选一。"""
+    if case.get("data") and case.get("data_file"):
+        raise SystemExit(f'{case["name"]}：data 和 data_file 只能给一个')
+    if case.get("data_file"):
+        return read_data_file(case["data_file"])
+    return case.get("data")
+
+
 def load_cases(env=None):
     config = load_config(env)
     default_headers = config.get("headers", {})
@@ -61,21 +106,22 @@ def load_cases(env=None):
         for step in case.get("setup", []) + case.get("teardown", []):
             prepare(step, config, default_headers, default_timeout)
         case["index"] = index
-        case["serial"] = needs_order(case)
+        case["serial"] = bool(case.get("serial")) or needs_order(case)
     return cases
 
 
 def expand_cases(cases):
-    """带 data 列表的用例按行展开，每行单独算一条。"""
+    """带数据行的用例按行展开，每行单独算一条。"""
     expanded = []
     for case in cases:
-        rows = case.get("data")
+        rows = case_rows(case)
         if not rows:
             expanded.append(case)
             continue
         for index, row in enumerate(rows, 1):
             item = dict(case)
-            item.pop("data")
+            item.pop("data", None)
+            item.pop("data_file", None)
             item["vars"] = row
             item["name"] = f'{case["name"]}[{index}]'
             expanded.append(item)

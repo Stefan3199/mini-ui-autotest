@@ -2,6 +2,7 @@ from engine.case_loader import load_cases, load_config
 from engine.request_sender import send_case
 from pathlib import Path
 import jinja2, sys
+import json
 import argparse
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -12,6 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--tag", help="只跑带这个标签的用例")
 parser.add_argument("--env", help="环境名，读 config/envs/<name>.yaml")
 parser.add_argument("--workers", type=int, default=1, help="并发线程数，默认 1")
+parser.add_argument("--only-failed", action="store_true", help="只跑上次失败的用例")
 args = parser.parse_args()
 
 cases = load_cases(args.env)
@@ -20,6 +22,22 @@ if args.tag:
     print(f"筛选标签：{args.tag}，共{len(cases)}条")
 config = load_config(args.env)
 RETRY_COUNT = config["retry_count"]
+
+base = Path(__file__).parent
+report_dir = base / config["report_dir"]
+report_dir.mkdir(exist_ok=True)
+last_failed_file = report_dir / "last-failed.json"
+
+if args.only_failed:
+    if not last_failed_file.exists():
+        raise SystemExit(f"没有上次的失败清单：{last_failed_file}")
+    payload = json.loads(last_failed_file.read_text(encoding="utf-8"))
+    names = set(payload.get("failed", []))
+    cases = [case for case in cases if case["name"] in names]
+    print(f"只跑上次失败的用例，共{len(cases)}条")
+    if not cases:
+        print("上次没有失败的用例，不用重跑")
+        sys.exit(0)
 
 
 def call(request):
@@ -141,9 +159,31 @@ slowest = max(results, key=lambda row: row["elapsed"]) if results else None
 
 print(f"共{len(cases)}条，过{passed}，挂{failed}，抖{flaky}")
 
-base = Path(__file__).parent
-report_dir = base / config["report_dir"]
-report_dir.mkdir(exist_ok=True)
+now = time.strftime("%Y-%m-%d %H:%M")
+failed_names = [row["name"] for row in results if row["result"] != "PASS"]
+last_failed_file.write_text(
+    json.dumps({"time": now, "env": args.env or "default", "failed": failed_names},
+               ensure_ascii=False, indent=2),
+    encoding="utf-8",
+)
+
+history_file = report_dir / "history.json"
+history = []
+if history_file.exists():
+    history = json.loads(history_file.read_text(encoding="utf-8"))
+history.append({
+    "time": now,
+    "env": args.env or "default",
+    "tag": args.tag or "全部",
+    "total": len(cases),
+    "passed": passed,
+    "failed": failed,
+    "flaky": flaky,
+    "wall_ms": wall_ms,
+})
+history = history[-20:]
+history_file.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+recent = list(reversed(history[-5:]))
 
 env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(str(base / "templates")),
@@ -162,6 +202,7 @@ html = tpl.render(
     slowest=slowest,
     env_name=args.env or "default",
     workers=args.workers,
+    recent=recent,
 )
 (report_dir / "report.html").write_text(html, encoding="utf-8")
 print("报告生成好了:", report_dir / "report.html")

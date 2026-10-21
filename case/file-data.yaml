@@ -1,0 +1,25 @@
+- name: 数据文件驱动（CSV）
+  tags: [v07, file]
+  url: /login
+  method: POST
+  data_file: case/data/login.csv
+  params:
+    user: "${user}"
+    pwd: "${pwd}"
+  expect:
+    - field: code
+      op: eq
+      value: "${want}"
+
+- name: 数据文件驱动（JSON）
+  tags: [v07, file]
+  url: /login
+  method: POST
+  data_file: case/data/login.json
+  params:
+    user: "${user}"
+    pwd: "${pwd}"
+  expect:
+    - field: code
+      op: eq
+      value: "${want}"
