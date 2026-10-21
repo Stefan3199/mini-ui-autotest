@@ -1,0 +1,39 @@
+- name: 字符串包含
+  tags: [assertion]
+  url: /user
+  method: GET
+  params: {}
+  expect:
+    - field: name
+      op: contains
+      value: "test"
+
+- name: 列表包含
+  tags: [assertion]
+  url: /user
+  method: GET
+  params: {}
+  expect:
+    - field: roles
+      op: contains
+      value: "admin"
+
+- name: 数值大于
+  tags: [assertion]
+  url: /user
+  method: GET
+  params: {}
+  expect:
+    - field: age
+      op: gt
+      value: 18
+
+- name: 在列表中
+  tags: [assertion]
+  url: /user
+  method: GET
+  params: {}
+  expect:
+    - field: name
+      op: in
+      value: ["test001", "guest"]

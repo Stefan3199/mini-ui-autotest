@@ -54,6 +54,8 @@ class Handler(BaseHTTPRequestHandler):
             reply = {"code": 0}
         elif self.path == "/echo":
             reply = {"code": 0, "x_token": self.headers.get("X-Token", "")}
+        elif self.path == "/user":
+            reply = {"code": 0, "name": "test001", "roles": ["admin", "tester"], "age": 30}
         else:
             self.send_response(404)
             self.end_headers()
