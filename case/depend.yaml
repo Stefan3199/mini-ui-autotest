@@ -1,0 +1,15 @@
+- name: 下单要用登录态
+  tags: [v09, depend]
+  depends_on: [登录并存 token]
+  url: /order
+  method: GET
+  headers:
+    X-Token: "${token}"
+  params: {}
+  expect:
+    - field: data.user.name
+      op: eq
+      value: test001
+    - field: data.total
+      op: gt
+      value: 0

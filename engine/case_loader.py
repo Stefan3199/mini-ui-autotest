@@ -101,12 +101,14 @@ def load_cases(env=None):
         with open(file, encoding="utf-8") as f:
             cases.extend(yaml.safe_load(f) or [])
     cases = expand_cases(cases)
+    cases = order_by_deps(cases)
+    mark_serial_chain(cases)
     for index, case in enumerate(cases, 1):
         prepare(case, config, default_headers, default_timeout)
         for step in case.get("setup", []) + case.get("teardown", []):
             prepare(step, config, default_headers, default_timeout)
         case["index"] = index
-        case["serial"] = bool(case.get("serial")) or needs_order(case)
+        case["serial"] = case["serial"] or needs_order(case)
     return cases
 
 
@@ -127,6 +129,57 @@ def expand_cases(cases):
             expanded.append(item)
     return expanded
 
+def order_by_deps(cases):
+    """按 depends_on 做拓扑排序，顺带查重名、查缺失、查成环。"""
+    by_name = {}
+    for case in cases:
+        deps = case.get("depends_on") or []
+        if isinstance(deps, str):
+            deps = [deps]
+        case["depends_on"] = deps
+        if case["name"] in by_name:
+            raise SystemExit(f'用例名重复：{case["name"]}')
+        by_name[case["name"]] = case
+
+    for case in cases:
+        for dep in case["depends_on"]:
+            if dep not in by_name:
+                raise SystemExit(f'{case["name"]} 依赖的用例不存在：{dep}')
+
+    ordered = []
+    state = {}
+
+    def visit(case, path):
+        name = case["name"]
+        if state.get(name) == 2:
+            return
+        if state.get(name) == 1:
+            raise SystemExit("用例依赖成环：" + " -> ".join(path + [name]))
+        state[name] = 1
+        for dep in case["depends_on"]:
+            visit(by_name[dep], path + [name])
+        state[name] = 2
+        ordered.append(case)
+
+    for case in cases:
+        visit(case, [])
+    return ordered
+
+
+def mark_serial_chain(cases):
+    """依赖链整条走串行通道，不然被依赖的用例可能排在并发通道里还没跑。"""
+    serial = {case["name"] for case in cases if case.get("serial") or case.get("depends_on")}
+    changed = True
+    while changed:
+        changed = False
+        for case in cases:
+            if case["name"] in serial:
+                for dep in case["depends_on"]:
+                    if dep not in serial:
+                        serial.add(dep)
+                        changed = True
+    for case in cases:
+        case["serial"] = case["name"] in serial
 
 if __name__ == "__main__":
     print(load_cases())             # 把 load_cases() 的结果打出来
