@@ -2,9 +2,9 @@
 
 [![test](https://github.com/Stefan3199/mini-ui-autotest/actions/workflows/test.yml/badge.svg)](https://github.com/Stefan3199/mini-ui-autotest/actions/workflows/test.yml)
 
-一个从零实现的接口自动化测试框架（v0.7）。用例写在 YAML 里，跑一条命令，出 HTML 报告。
+一个从零实现的接口自动化测试框架（v0.8）。用例写在 YAML 里，跑一条命令，出 HTML 报告。
 
-名字里的 ui 是给后续 UI 自动化留的位置，v0.7 仍只做接口测试。
+名字里的 ui 是给后续 UI 自动化留的位置，v0.8 仍只做接口测试。
 
 ## 特性
 
@@ -25,6 +25,10 @@
 - **数据文件驱动**：`data_file` 读 CSV 或 JSON，一行一组数据，CSV 的数值和布尔会自动转类型
 - **只跑失败的**：挂了的用例自动记下来，`--only-failed` 下一轮只跑这些
 - **运行历史**：报告里带最近几次运行的通过数和耗时，趋势一眼能看到
+- **JUnit 报告**：同时输出 `junit.xml`，Jenkins、GitLab、GitHub 都能直接读
+- **失败重跑**：`--rerun 2` 让挂掉的用例再跑两轮，通过的在报告里标注重跑次数，不掩盖问题
+- **报告归档**：每次运行存一份带时间戳的 HTML 到 `report/archive/`，只留最近 20 份
+- **只列不跑**：`--list` 列出筛选后将要执行的用例，和标签、串行通道一起显示
 - **HTML 报告**：总账、判决、耗时、预期与实际对比、请求详情、逐条断言结果
 - **自动 CI**：push 或 PR 触发 GitHub Actions，跑测试并上传报告
 - **分层结构**：用例加载、请求发送、断言、调度各管一摊
@@ -76,7 +80,22 @@ python run.py --tag slow --workers 2
 python run.py --only-failed
 ```
 
-打开 `report/report.html` 看报告，用了 `--env` 时报告落在该环境配的目录里。
+先看看筛选后会跑哪些用例，不发请求：
+
+```bash
+python run.py --list
+python run.py --tag chain --list
+```
+
+挂了想再给一次机会，跑两轮重试：
+
+```bash
+python run.py --rerun 2
+```
+
+demo 里有个 `/flip` 接口，第一次请求返回失败，之后都正常，照着写一条用例就能试出重跑的效果。
+
+打开 `report/report.html` 看报告，用了 `--env` 时报告落在该环境配的目录里。同目录还有 `junit.xml`（CI 用）和 `archive/`（历次报告）。
 
 ## 配置
 
@@ -316,6 +335,13 @@ setup 里任何一步没拿到响应，这条用例直接判 FAIL，主请求不
 - `FAIL`：有断言没中
 - `FLAKY`：重试次数用完仍没拿到响应，属于环境抖动，不算业务失败
 
+重跑通过的用例仍显示 `PASS`，下面标一行「重跑 N 次」，顶部总账单独给出重跑通过几条，不算假绿。
+
+报告目录里还有两份生成物：
+
+- `junit.xml`：JUnit 格式，`FAIL` 记 `failure`，`FLAKY` 记 `error`，CI 平台拿这个出测试报表
+- `archive/`：每次运行的 HTML 快照，文件名带时间和筛选条件，只保留最近 20 份
+
 22 条用例全绿时长这样：
 
 ![测试报告](docs/images/report.png)
@@ -386,6 +412,11 @@ mini-ui-autotest/
 - `data` 和 `data_file` 二选一，同时写直接报错，避免「到底跑了哪份数据」说不清。
 - 失败清单和运行历史都写在报告目录，按环境隔离，`--only-failed` 重跑时只认同一环境的上次结果。
 - `serial: true` 是人工兜底：自动识别只管变量依赖，改服务端共享状态的用例自己声明。
+- 重跑只碰失败的用例；串行通道里只要有一条挂，整条通道按原顺序重跑，否则变量接不上。
+- 重跑通过单独计数并在报告里标注，不能悄悄改判，不然不稳定用例会被洗成绿。
+- JUnit 里 `FLAKY` 记 `error` 不记 `failure`，CI 上能区分业务失败和环境问题。
+- 归档按文件名里的时间戳排序，只留最近 20 份，跑一年也不会撑爆磁盘。
+- 并发用线程不用进程：用例都在等网络，GIL 不是瓶颈；进程池还要处理 Windows 的启动守卫和结果序列化，收益不值。
 - CI 看退出码不看屏幕输出，用例有挂或抖时 `run.py` 返回 1。
 
 ## Roadmap
@@ -396,6 +427,7 @@ mini-ui-autotest/
 - v0.5（已完成）：嵌套字段、regex/len/type、变量传递、参数化、耗时统计
 - v0.6（已完成）：多环境、setup/teardown、并发执行
 - v0.7（已完成）：外部数据文件、只跑失败用例、运行历史
+- v0.8（已完成）：JUnit 报告、失败重跑、报告归档、--list
 - 远期：Playwright UI 自动化
 
 ## License
