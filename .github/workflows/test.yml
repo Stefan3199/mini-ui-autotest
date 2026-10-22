@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+env:
+  # Windows 上被重定向或进 CI 时按 UTF-8 输出，否则打中文会 charmap 崩
+  PYTHONIOENCODING: utf-8
+
 jobs:
   # 先跑框架自己的单测：不依赖网络，几秒出结果
   unit:
@@ -54,30 +58,39 @@ jobs:
           done
           echo "server did not start"; cat server.log; exit 1
 
-      - name: Start demo server (windows)
+      - name: Run suite (unix)
+        if: runner.os != 'Windows'
+        run: python run.py --workers 4
+
+      # Windows 上服务和用例必须在同一步里：上一步起的进程，下一步连不上
+      - name: Run suite (windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Start-Process -FilePath python -ArgumentList 'demo/login_server.py' -RedirectStandardOutput server.log -RedirectStandardError server.err -PassThru | Out-Null
+          $server = Start-Process python -ArgumentList 'demo/login_server.py' -PassThru -RedirectStandardOutput server.log -RedirectStandardError server.err
+          $ready = $false
           for ($i = 0; $i -lt 30; $i++) {
             try {
               Invoke-WebRequest -Uri 'http://127.0.0.1:9300/echo' -UseBasicParsing -TimeoutSec 2 | Out-Null
-              Write-Host 'server ready'
-              exit 0
+              $ready = $true
+              break
             } catch {
               Start-Sleep -Seconds 1
             }
           }
-          Write-Host 'server did not start'
-          Get-Content server.log, server.err -ErrorAction SilentlyContinue
-          exit 1
-
-      - name: Run suite
-        run: python run.py --workers 4
+          if (-not $ready) {
+            Write-Host 'server did not start'
+            Get-Content server.log, server.err -ErrorAction SilentlyContinue
+            exit 1
+          }
+          python run.py --workers 4
+          $code = $LASTEXITCODE
+          Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          exit $code
 
       - name: Show result.json summary
         if: always()
-        run: python -c "import json;d=json.load(open('report/result.json',encoding='utf-8'));print(d['summary'])"
+        run: python -X utf8 -c "import json;d=json.load(open('report/result.json',encoding='utf-8'));print(d['summary'])"
 
       - name: Upload report
         if: always()
