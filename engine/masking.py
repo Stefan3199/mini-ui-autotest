@@ -27,15 +27,16 @@ def is_sensitive(key, extra=()):
 
 
 def mask(mapping, extra=()):
-    """返回打码后的新字典，嵌套字典也走一遍。"""
+    """返回打码后的新字典，嵌套字典和列表里的字典都走一遍。"""
     if not mapping:
         return {}
-    masked = {}
-    for key, value in mapping.items():
-        if is_sensitive(key, extra):
-            masked[key] = MASK
-        elif isinstance(value, dict):
-            masked[key] = mask(value, extra)
-        else:
-            masked[key] = value
-    return masked
+    return {key: (MASK if is_sensitive(key, extra) else _mask_value(value, extra))
+            for key, value in mapping.items()}
+
+
+def _mask_value(value, extra):
+    if isinstance(value, dict):
+        return mask(value, extra)
+    if isinstance(value, list):
+        return [_mask_value(item, extra) for item in value]
+    return value

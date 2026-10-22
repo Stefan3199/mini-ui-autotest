@@ -92,8 +92,7 @@ def load_config(env=None, base_dir=None):
         raise CaseError(f"{config_file.name}：retry_count 至少是 1")
     if data["archive_keep"] < 1:
         raise CaseError(f"{config_file.name}：archive_keep 至少是 1")
-    if isinstance(data["timeout"], bool) or not isinstance(data["timeout"], (int, float, list)):
-        raise CaseError(f"{config_file.name}：timeout 要是数字或 [连接, 读取]")
+    _validate_timeout(data["timeout"], f"{config_file.name}：")
     return data
 
 
@@ -183,16 +182,24 @@ def _check_mapping(spec, label, key):
         raise CaseError(f"{label}：{key} 要是字典")
 
 
-def _check_timeout(spec, label):
-    value = spec.get("timeout")
+def _validate_timeout(value, prefix):
     if value is None:
         return
     if isinstance(value, bool) or not isinstance(value, (int, float, list)):
-        raise CaseError(f"{label}：timeout 要是数字或 [连接, 读取]")
-    if isinstance(value, list) and len(value) != 2:
-        raise CaseError(f"{label}：timeout 写成 [连接秒数, 读取秒数]")
-    if isinstance(value, (int, float)) and value <= 0:
-        raise CaseError(f"{label}：timeout 要大于 0")
+        raise CaseError(f"{prefix}timeout 要是数字或 [连接, 读取]")
+    if isinstance(value, list):
+        if len(value) != 2:
+            raise CaseError(f"{prefix}timeout 写成 [连接秒数, 读取秒数]")
+        for part in value:
+            if isinstance(part, bool) or not isinstance(part, (int, float)) or part <= 0:
+                raise CaseError(f"{prefix}timeout 的每一项都要是大于 0 的数字，现在是 {part!r}")
+        return
+    if value <= 0:
+        raise CaseError(f"{prefix}timeout 要大于 0")
+
+
+def _check_timeout(spec, label):
+    _validate_timeout(spec.get("timeout"), f"{label}：")
 
 
 def validate_step(step, label):
@@ -430,14 +437,15 @@ def load_cases(env=None, strict=False, base_dir=None, config=None, case_dir=None
 
     warnings = []
     raw_cases = []
-    for file in sorted(directory.glob("*.yaml")):
+    for file in sorted(directory.rglob("*.yaml")):
+        relative = file.relative_to(directory).as_posix()
         document = _read_yaml(file)
         if document is None:
             continue
         if not isinstance(document, list):
-            raise CaseError(f"{file.name} 顶层要是用例列表")
+            raise CaseError(f"{relative} 顶层要是用例列表")
         for number, case in enumerate(document, 1):
-            validate_case(case, f"{file.name} 第{number}条", strict, warnings)
+            validate_case(case, f"{relative} 第{number}条", strict, warnings)
             raw_cases.append(case)
 
     cases = expand_cases(raw_cases, base)

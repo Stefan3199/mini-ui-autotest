@@ -93,7 +93,9 @@ def _load_last_failed(path):
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         return []
-    return list(payload.get("failed") or [])
+    names = list(payload.get("failed") or [])
+    names += [name for name in (payload.get("skipped") or []) if name not in names]
+    return names
 
 
 def main(argv=None):

@@ -39,6 +39,11 @@ class RunOptions:
             (self.emit or print)(message)
 
 
+def _is_secret_field(field):
+    """字段名最后一段命中敏感词就当作秘密，报告里换成 ***。"""
+    return masking.is_sensitive(str(field).split(".")[-1])
+
+
 def _now_ms(start):
     return round((time.perf_counter() - start) * 1000, 1)
 
@@ -127,7 +132,7 @@ def run_one(case, context=None, done=None, options=None, send=request_sender.sen
     )
     outcome.params = masking.mask(case.get("params"), options.sensitive)
     outcome.headers = masking.mask(case.get("headers"), options.sensitive)
-    outcome.expect_text = assertion.describe_expect(case["expect"])
+    outcome.expect_text = assertion.describe_expect(case["expect"], _is_secret_field)
     start = time.perf_counter()
 
     for dep in case.get("depends_on") or []:
@@ -142,7 +147,7 @@ def run_one(case, context=None, done=None, options=None, send=request_sender.sen
                        f"变量 ${{{error.name}}} 没定义")
 
     # 变量替换之后再生成「预期」摘要，否则参数化用例的预期列会显示 ${want} 这种模板
-    outcome.expect_text = assertion.describe_expect(case["expect"])
+    outcome.expect_text = assertion.describe_expect(case["expect"], _is_secret_field)
 
     for step in case.get("setup") or []:
         response, attempts, error = attempt_request(step, options, send, phase=f'setup:{step["name"]}')
@@ -169,15 +174,22 @@ def run_one(case, context=None, done=None, options=None, send=request_sender.sen
     outcome.status_code = response.status_code
     outcome.body_kind = response.body_kind
     outcome.checks = assertion.run_checks(response.status_code, response.body, case["expect"])
+    for check in outcome.checks:
+        if not masking.is_sensitive(check.field.split(".")[-1]):
+            continue
+        check.actual = masking.MASK
+        if assertion.OPS[check.op].needs_value:
+            check.expect = masking.MASK
     outcome.actual_text = assertion.describe_actual(outcome.checks)
 
     bad = next((check for check in outcome.checks if not check.ok), None)
     if bad is not None:
+        teardown_note = f"；另外 teardown 也失败：{teardown_failed}" if teardown_failed else ""
         if response.body_kind == "text" and bad.field != assertion.STATUS_FIELD:
             return _finish(outcome, start, options, FAIL, Cause.JSON,
-                           f"响应不是 JSON，断不了 {bad.field}：{response.text[:80]}")
+                           f"响应不是 JSON，断不了 {bad.field}：{response.text[:80]}{teardown_note}")
         return _finish(outcome, start, options, FAIL, Cause.ASSERT,
-                       assertion.describe_bad(bad))
+                       assertion.describe_bad(bad) + teardown_note)
     if teardown_failed is not None:
         return _finish(outcome, start, options, FAIL, Cause.TEARDOWN,
                        f"teardown 失败：{teardown_failed}")
@@ -186,7 +198,7 @@ def run_one(case, context=None, done=None, options=None, send=request_sender.sen
         for name, field_path in case["save"].items():
             value = assertion.pick(response.body, field_path)
             context[name] = value
-            outcome.saved[name] = value
+            outcome.saved[name] = masking.MASK if masking.is_sensitive(name) else value
 
     note = ""
     if response.body_kind == "text":

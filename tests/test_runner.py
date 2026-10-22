@@ -155,7 +155,8 @@ class SaveTest(unittest.TestCase):
         row = runner.run_one(case, context, {}, opts(), send)
         self.assertEqual(row.status, PASS)
         self.assertEqual(context["token"], "TOK")
-        self.assertEqual(row.saved, {"token": "TOK"})
+        self.assertEqual(row.saved, {"token": "***"})
+        self.assertEqual(context["token"], "TOK")
 
     def test_serial_lane_shares_token(self):
         seen = []

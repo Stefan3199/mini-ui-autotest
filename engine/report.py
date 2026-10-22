@@ -129,8 +129,9 @@ def write_result_json(rows, summary, meta, path):
 def write_last_failed(path, rows, meta):
     """记下这轮挂的和抖的，--only-failed 下一轮只跑这些。"""
     failed = [row.name for row in rows if row.status in (FAIL, FLAKY)]
+    skipped = [row.name for row in rows if row.status == SKIP]
     payload = {"time": meta.get("time", ""), "env": meta.get("env") or "default",
-               "failed": failed}
+               "failed": failed, "skipped": skipped}
     Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return failed
 
@@ -143,6 +144,10 @@ def archive(report_dir, html, meta, keep):
     tag = str(meta.get("tag") or "全部").replace("/", "-").replace("\\", "-").replace(" ", "_")
     env = meta.get("env") or "default"
     path = archive_dir / f"{stamp}_{env}_{tag}.html"
+    suffix = 2
+    while path.exists():
+        path = archive_dir / f"{stamp}_{env}_{tag}-{suffix}.html"
+        suffix += 1
     path.write_text(html, encoding="utf-8")
     for old in sorted(archive_dir.glob("*.html"))[:-keep]:
         old.unlink()

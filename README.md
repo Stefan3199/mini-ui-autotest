@@ -2,9 +2,9 @@
 
 [![test](https://github.com/Stefan3199/mini-ui-autotest/actions/workflows/test.yml/badge.svg)](https://github.com/Stefan3199/mini-ui-autotest/actions/workflows/test.yml)
 
-一个从零实现的接口自动化测试框架（v1.0）。用例写在 YAML 里，跑一条命令，出 HTML 报告、机器可读结果和 JUnit。
+一个从零实现的接口自动化测试框架（v1.0.1）。用例写在 YAML 里，跑一条命令，出 HTML 报告、机器可读结果和 JUnit。
 
-名字里的 ui 是给后续 UI 自动化留的位置，v1.0 仍只做接口测试。
+名字里的 ui 是给后续 UI 自动化留的位置，v1.0.1 仍只做接口测试。
 
 ## 特性
 
@@ -43,7 +43,7 @@
 
 **可维护**
 
-- **框架自测**：143 条单元测试，`python -m unittest` 直接跑，不依赖网络
+- **框架自测**：160 条单元测试，`python -m unittest` 直接跑，不依赖网络
 - **分层结构**：用例加载、请求发送、断言、调度、报告各管一摊，`run.py` 只是薄壳
 - **自动 CI**：push 或 PR 触发，4 个矩阵组合（3.10/3.13 × Ubuntu/Windows）
 
@@ -507,7 +507,7 @@ mini-ui-autotest/
 │   └── cli.py             # 参数解析、组装、退出码
 ├── templates/
 │   └── report.html        # 报告模板
-├── tests/                 # 框架自测（143 条）
+├── tests/                 # 框架自测（160 条）
 ├── run.py                 # 入口薄壳：from engine.cli import main
 ├── requirements.txt
 ├── CHANGELOG.md
@@ -589,6 +589,7 @@ mini-ui-autotest/
 - v0.8（已完成）：JUnit 报告、失败重跑、报告归档、--list
 - v0.9（已完成）：用例依赖 depends_on、SKIP 判决、通过率趋势图
 - v1.0（已完成）：判决原因、传输/协议错误分离、框架自测、result.json、互斥组、语义化退出码
+- v1.0.1（已完成）：敏感值脱敏、子目录用例、超时校验等 8 个修复
 - 远期：Playwright UI 自动化
 
 ## License

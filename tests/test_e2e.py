@@ -145,7 +145,7 @@ class EndToEndTest(unittest.TestCase):
             payload = json.loads(paths["json"].read_text(encoding="utf-8"))
             self.assertEqual(payload["summary"]["total"], len(rows))
             self.assertEqual(payload["summary"]["passed"], len(rows))
-            self.assertEqual(payload["meta"]["version"], "1.0.0")
+            self.assertEqual(payload["meta"]["version"], "1.0.1")
             self.assertTrue(payload["cases"][0]["attempts"])
 
 

@@ -142,15 +142,24 @@ def validate_item(item):
         return f'断言 {field}：不认识的 op「{op_name}」，可用：{", ".join(OP_NAMES)}'
     if OPS[op_name].needs_value and "value" not in item:
         return f'断言 {field}：op={op_name} 需要 value'
+    if op_name == "regex":
+        try:
+            re.compile(str(item.get("value")))
+        except re.error as exc:
+            return f"断言 {field}：正则写错了（{exc}）：{item.get('value')!r}"
     return None
 
 
-def describe_expect(expect):
+def describe_expect(expect, mask=None):
+    """生成「预期」摘要。mask(field) 为真时把值换成 ***，避免 token 从这里漏出去。"""
     parts = []
     for item in expect:
         field = item["field"]
         op = OPS.get(item["op"])
-        parts.append(f"{field}{op.summary(item.get('value')) if op else '?'}")
+        value = item.get("value")
+        if mask is not None and mask(field):
+            value = "***"
+        parts.append(f"{field}{op.summary(value) if op else '?'}")
     return "，".join(parts)
 
 
