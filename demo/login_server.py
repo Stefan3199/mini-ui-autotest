@@ -115,12 +115,24 @@ class Handler(BaseHTTPRequestHandler):
         print("[demo]", format % args)
 
 
+def _force_utf8():
+    """输出被重定向或进 CI 时按 UTF-8 编码，Windows 默认是 cp1252，打中文会崩。"""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None or getattr(stream, "isatty", lambda: False)():
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def serve(port=9300):
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     return server
 
 
 if __name__ == "__main__":
+    _force_utf8()
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 9300
     print(f"demo 服务已启动: http://127.0.0.1:{port}")
     serve(port).serve_forever()
