@@ -152,7 +152,7 @@
           {% if row.attempts and (row.attempts | length) > 1 %}
           <p class="muted">请求尝试</p>
           <table>
-            <thead><tr><th>#</th><th>阶段</th><th>结果</th><th>状态码</th><th>耗时</th><th>说明</th></tr></thead>
+            <thead><tr><th>#</th><th>阶段</th><th>结果</th><th>状态码</th><th>间隔</th><th>耗时</th><th>说明</th></tr></thead>
             <tbody>
             {% for item in row.attempts %}
               <tr>
@@ -160,6 +160,7 @@
                 <td>{{ item.phase }}</td>
                 <td>{{ "成功" if item.ok else item.cause }}</td>
                 <td>{{ item.status_code if item.status_code is not none else "-" }}</td>
+                <td>{{ item.waited_ms }} ms</td>
                 <td>{{ item.elapsed_ms }} ms</td>
                 <td>{{ item.message }}</td>
               </tr>

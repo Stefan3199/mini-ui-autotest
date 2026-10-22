@@ -53,8 +53,8 @@ def merge(base, override):
     return result
 
 
-def load_config(env=None, base_dir=None):
-    """读 config/config.yaml，有环境就深合并 envs/<name>.yaml，并补默认值。"""
+def load_config(env=None, base_dir=None, overrides=None):
+    """读 config/config.yaml，有环境就深合并 envs/<name>.yaml，CLI 覆盖最后生效。"""
     base = Path(base_dir) if base_dir else Path(__file__).resolve().parents[1]
     config_file = base / "config" / "config.yaml"
     if not config_file.exists():
@@ -71,8 +71,13 @@ def load_config(env=None, base_dir=None):
             raise CaseError(f"环境配置 {env_file.name} 顶层要是字典")
         data = merge(data, override)
 
+    # 优先级：命令行 > 环境文件 > 基础配置
+    if overrides:
+        data = merge(data, overrides)
+
     data.setdefault("report_dir", "report")
     data.setdefault("retry_count", 3)
+    data.setdefault("retry_backoff", 0)
     data.setdefault("timeout", 5)
     data.setdefault("archive_keep", DEFAULT_ARCHIVE_KEEP)
     data.setdefault("headers", {})
@@ -93,7 +98,20 @@ def load_config(env=None, base_dir=None):
     if data["archive_keep"] < 1:
         raise CaseError(f"{config_file.name}：archive_keep 至少是 1")
     _validate_timeout(data["timeout"], f"{config_file.name}：")
+    _validate_backoff(data["retry_backoff"], f"{config_file.name}：")
     return data
+
+
+def _validate_backoff(value, prefix):
+    """重试间隔：一个数字（固定）或一串数字（按次递增），单位秒。"""
+    if isinstance(value, bool) or not isinstance(value, (int, float, list)):
+        raise CaseError(f"{prefix}retry_backoff 要是数字或非空数字列表")
+    values = value if isinstance(value, list) else [value]
+    if not values:
+        raise CaseError(f"{prefix}retry_backoff 要是数字或非空数字列表")
+    for item in values:
+        if isinstance(item, bool) or not isinstance(item, (int, float)) or item < 0:
+            raise CaseError(f"{prefix}retry_backoff 的每一项都要是大于等于 0 的数字，现在是 {item!r}")
 
 
 def _read_yaml(path):
