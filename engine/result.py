@@ -55,6 +55,7 @@ class Attempt:
     message: str = ""
     status_code: int | None = None
     elapsed_ms: float = 0.0
+    waited_ms: float = 0.0  # 发起这次尝试之前等了多少毫秒（重试退避）
     phase: str = "main"  # main / setup:名字 / teardown:名字
 
     def to_dict(self):
@@ -66,6 +67,7 @@ class Attempt:
             "message": self.message,
             "status_code": self.status_code,
             "elapsed_ms": self.elapsed_ms,
+            "waited_ms": self.waited_ms,
         }
 
 

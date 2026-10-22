@@ -43,7 +43,7 @@
 
 **可维护**
 
-- **框架自测**：160 条单元测试，`python -m unittest` 直接跑，不依赖网络
+- **框架自测**：179 条单元测试，`python -m unittest` 直接跑，不依赖网络
 - **分层结构**：用例加载、请求发送、断言、调度、报告各管一摊，`run.py` 只是薄壳
 - **自动 CI**：push 或 PR 触发，4 个矩阵组合（3.10/3.13 × Ubuntu/Windows）
 
@@ -127,6 +127,7 @@ python -m unittest discover -s tests -t . -v
 base_url: "http://127.0.0.1:9300"
 report_dir: "report"
 retry_count: 3
+retry_backoff: 0
 timeout: 5
 archive_keep: 20
 headers:
@@ -137,6 +138,7 @@ sensitive: [pwd, pass, token, auth, key, secret, cookie, session]
 - `base_url`：被测服务地址
 - `report_dir`：报告输出目录（生成物，已加入 .gitignore）
 - `retry_count`：单条请求最多尝试次数（只对连接失败、超时生效，至少 1）
+- `retry_backoff`：两次尝试之间等几秒。写数字是固定间隔，写 `[0.5, 1, 2]` 是按次递增，末项会重复使用；默认 0，行为和旧版一致
 - `timeout`：单次请求超时秒数，写成 `[连接, 读取]` 可以分开；用例可覆盖
 - `archive_keep`：归档保留份数，`--keep` 可临时覆盖
 - `headers`：公共请求头，用例里的同名头会覆盖这里
@@ -442,6 +444,10 @@ setup 里任何一步拿不到响应，这条用例直接判 FAIL，主请求不
 |---|---|
 | `--tag <标签>` | 只跑带这个标签的用例，依赖自动带入 |
 | `--env <名字>` | 读 `config/envs/<名字>.yaml` 覆盖基础配置 |
+| `--base-url <地址>` | 覆盖配置里的 `base_url`，结尾的 `/` 会被去掉 |
+| `--report-dir <目录>` | 覆盖报告目录，支持绝对路径 |
+| `--retry <N>` | 覆盖 `retry_count`，至少 1 |
+| `--timeout <秒>` | 覆盖默认超时；用例里写了自己的 `timeout` 仍然优先 |
 | `--workers <N>` | 并发线程数，默认 1 |
 | `--only-failed` | 只跑上次挂的和抖的 |
 | `--rerun <N>` | 失败用例最多再跑 N 轮，默认 0 |
@@ -507,7 +513,7 @@ mini-ui-autotest/
 │   └── cli.py             # 参数解析、组装、退出码
 ├── templates/
 │   └── report.html        # 报告模板
-├── tests/                 # 框架自测（160 条）
+├── tests/                 # 框架自测（179 条）
 ├── run.py                 # 入口薄壳：from engine.cli import main
 ├── requirements.txt
 ├── CHANGELOG.md
@@ -539,6 +545,7 @@ mini-ui-autotest/
 - 传输错误和协议错误分开抛：`send_case` 成功返回 `Response`，失败抛 `TransportError`（可重试）或 `ProtocolError`（不重试）。v0.9 只返回 `None`，把「连不上」「返回的不是 JSON」「超时」压成同一个 FLAKY；而且 `requests` 的 `JSONDecodeError` 继承自 `RequestException`，会连非 JSON 响应一起吞掉，导致状态码断言永远拿不到响应。
 - 非 JSON 响应保留状态码，body 当空：只断状态码的用例照样过；一旦断言碰到响应体字段，判 `FAIL` 且原因是「响应不是 JSON」，不记抖动。
 - 重试只服务连接层。断言失败不重试，重试一万次也不会变绿。
+- 重试必须退避。三次重试挤在几十毫秒里打完，等于没重试；服务刚启动的那一两秒，全靠 `retry_backoff` 撑过去。等待只放在第 2 次及以后的尝试之前，最后一次失败不白等。
 
 **输入**
 

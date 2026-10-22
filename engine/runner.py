@@ -29,6 +29,8 @@ class RunOptions:
     quiet: bool = False
     verbose: bool = False
     sensitive: tuple = ()
+    retry_backoff: object = 0
+    sleep: object = None  # 测试注入用，默认 time.sleep
     emit: object = None
     _lock: Lock = field(default_factory=Lock, repr=False)
 
@@ -46,6 +48,20 @@ def _is_secret_field(field):
 
 def _now_ms(start):
     return round((time.perf_counter() - start) * 1000, 1)
+
+
+def backoff_delay(backoff, retry_index):
+    """第 retry_index 次重试（从 1 开始）之前等几秒。数字=固定，列表=按次递增。"""
+    if isinstance(backoff, (list, tuple)):
+        if not backoff:
+            return 0.0
+        return float(backoff[min(retry_index - 1, len(backoff) - 1)])
+    return float(backoff or 0)
+
+
+def _wait(options, seconds):
+    if seconds > 0:
+        (options.sleep or time.sleep)(seconds)
 
 
 def _cause_of(error):
@@ -75,22 +91,29 @@ def attempt_request(request, options, send, phase="main"):
     attempts = []
     last_error = None
     for number in range(1, options.retry_count + 1):
+        waited = 0.0
+        if number > 1:
+            # 只在下一次尝试之前等：最后一次失败后立刻返回，不白等
+            waited = backoff_delay(options.retry_backoff, number - 1)
+            _wait(options, waited)
         start = time.perf_counter()
         try:
             response = send(request)
             attempts.append(Attempt(number, True, phase=phase,
                                     status_code=response.status_code,
-                                    elapsed_ms=_now_ms(start)))
+                                    elapsed_ms=_now_ms(start),
+                                    waited_ms=round(waited * 1000, 1)))
             return response, attempts, None
         except TransportError as error:
             attempts.append(Attempt(number, False, cause=error.kind, message=error.message,
-                                    elapsed_ms=_now_ms(start), phase=phase))
+                                    elapsed_ms=_now_ms(start), phase=phase,
+                                    waited_ms=round(waited * 1000, 1)))
             last_error = error
         except ProtocolError as error:
             elapsed = _now_ms(start)
             attempts.append(Attempt(number, False, cause=error.kind, message=error.message,
                                     status_code=error.status_code, elapsed_ms=elapsed,
-                                    phase=phase))
+                                    phase=phase, waited_ms=round(waited * 1000, 1)))
             # 协议错误不重试，但状态码和响应文本要留住：只断状态码的用例还能通过
             response = Response(status_code=error.status_code, body=None, text=error.text,
                                 elapsed_ms=elapsed, body_kind="text")

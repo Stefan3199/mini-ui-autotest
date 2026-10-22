@@ -32,6 +32,10 @@ def build_parser():
     parser = Parser(prog="run.py", description="mini-ui-autotest：YAML 数据驱动的接口自动化测试")
     parser.add_argument("--tag", help="只跑带这个标签的用例")
     parser.add_argument("--env", help="环境名，读 config/envs/<name>.yaml")
+    parser.add_argument("--base-url", dest="base_url", help="覆盖配置里的 base_url")
+    parser.add_argument("--report-dir", dest="report_dir", help="覆盖配置里的 report_dir")
+    parser.add_argument("--retry", type=int, help="覆盖 retry_count（单条请求最多尝试次数）")
+    parser.add_argument("--timeout", type=float, help="覆盖默认超时秒数，用例自己写的 timeout 仍然优先")
     parser.add_argument("--workers", type=int, default=1, help="并发线程数，默认 1")
     parser.add_argument("--only-failed", action="store_true", help="只跑上次失败的用例")
     parser.add_argument("--rerun", type=int, default=0, help="失败用例最多再跑几轮，默认 0")
@@ -108,12 +112,28 @@ def main(argv=None):
         parser.error("--rerun 不能是负数")
     if args.keep is not None and args.keep < 1:
         parser.error("--keep 至少是 1")
+    if args.retry is not None and args.retry < 1:
+        parser.error("--retry 至少是 1")
+    if args.timeout is not None and args.timeout <= 0:
+        parser.error("--timeout 要大于 0")
+    if args.base_url and not args.base_url.startswith(("http://", "https://")):
+        parser.error("--base-url 要以 http:// 或 https:// 开头")
+
+    overrides = {}
+    if args.base_url:
+        overrides["base_url"] = args.base_url.rstrip("/")
+    if args.report_dir:
+        overrides["report_dir"] = args.report_dir
+    if args.retry is not None:
+        overrides["retry_count"] = args.retry
+    if args.timeout is not None:
+        overrides["timeout"] = args.timeout
 
     base = Path(__file__).resolve().parents[1]
     started = time.perf_counter()
 
     try:
-        config = case_loader.load_config(args.env, base)
+        config = case_loader.load_config(args.env, base, overrides)
         loaded = case_loader.load_cases(args.env, strict=args.strict, base_dir=base, config=config)
     except case_loader.CaseError as error:
         print(f"用例或配置有问题：{error}", file=sys.stderr)
@@ -155,6 +175,7 @@ def main(argv=None):
         quiet=args.quiet,
         verbose=args.verbose,
         sensitive=tuple(config.get("sensitive") or ()),
+        retry_backoff=config.get("retry_backoff", 0),
     )
     rows = runner.run_all(cases, options)
 

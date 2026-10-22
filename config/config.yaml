@@ -1,6 +1,7 @@
 base_url: "http://127.0.0.1:9300"
 report_dir: "report"
 retry_count: 3
+retry_backoff: 0          # 重试间隔秒数；写 [0.5, 1, 2] 表示按次递增
 timeout: 5
 archive_keep: 20
 headers:
