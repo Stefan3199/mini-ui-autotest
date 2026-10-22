@@ -1,0 +1,41 @@
+"""脱敏：参数和请求头进报告、JUnit、result.json 之前统一打码。
+
+只用一份敏感词表，参数和请求头共用，避免出现「请求头打码了、参数没打」。
+"""
+
+# 默认敏感词，键名里包含这些片段就整值替换成 ***
+DEFAULT_SENSITIVE = (
+    "pwd",
+    "pass",
+    "token",
+    "auth",
+    "key",
+    "secret",
+    "cookie",
+    "session",
+)
+
+MASK = "***"
+
+
+def is_sensitive(key, extra=()):
+    """键名是否敏感。大小写不敏感，子串匹配。"""
+    low = str(key).lower()
+    if low in {str(item).lower() for item in extra}:
+        return True
+    return any(word in low for word in DEFAULT_SENSITIVE)
+
+
+def mask(mapping, extra=()):
+    """返回打码后的新字典，嵌套字典也走一遍。"""
+    if not mapping:
+        return {}
+    masked = {}
+    for key, value in mapping.items():
+        if is_sensitive(key, extra):
+            masked[key] = MASK
+        elif isinstance(value, dict):
+            masked[key] = mask(value, extra)
+        else:
+            masked[key] = value
+    return masked

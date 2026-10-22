@@ -1,25 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>测试报告 · {{ meta.time }}</title>
 <style>
-  table { border-collapse: collapse; }
-  th, td { border: 1px solid #999; padding: 6px 10px; text-align: left; }
-  .PASS { background: #2e7d32; color: white; }
-  .FAIL { background: #c62828; color: white; }
-  .FLAKY { background: #ef6c00; color: white; }
-  .SKIP { background: #607d8b; color: white; }
-  td.PASS, td.FAIL, td.FLAKY, td.SKIP { text-align: center; font-weight: bold; }
+  :root { --pass:#2e7d32; --fail:#c62828; --flaky:#ef6c00; --skip:#607d8b; --line:#ddd; }
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  .muted { color: #666; font-size: 13px; }
+  .cards { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+  .card { border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; min-width: 78px; }
+  .card b { display: block; font-size: 20px; }
+  .card span { font-size: 12px; color: #666; }
+  .card.pass b { color: var(--pass); }
+  .card.fail b { color: var(--fail); }
+  .card.flaky b { color: var(--flaky); }
+  .card.skip b { color: var(--skip); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: #fafafa; font-weight: 600; }
+  td.badge { text-align: center; font-weight: 700; color: #fff; }
+  td.PASS, .badge.PASS { background: var(--pass); }
+  td.FAIL, .badge.FAIL { background: var(--fail); }
+  td.FLAKY, .badge.FLAKY { background: var(--flaky); }
+  td.SKIP, .badge.SKIP { background: var(--skip); }
+  .retried { font-weight: 400; font-size: 11px; opacity: .9; }
+  .cause { font-size: 11px; font-weight: 400; }
+  details summary { cursor: pointer; color: #1565c0; }
+  details p { margin: 6px 0; }
+  .reason { color: var(--fail); }
+  .note { color: var(--flaky); }
   .trend { display: flex; align-items: flex-end; gap: 12px; height: 100px; margin: 8px 0 4px; }
   .trend .item { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
   .trend .rate { font-size: 12px; color: #555; margin-bottom: 4px; }
-  .trend .bar { width: 30px; background: #2e7d32; border-radius: 2px 2px 0 0; }
-  .trend .bar.part { background: #ef6c00; }
-  .trend .bar.bad { background: #c62828; }
+  .trend .bar { width: 30px; background: var(--pass); border-radius: 2px 2px 0 0; }
+  .trend .bar.part { background: var(--flaky); }
+  .trend .bar.bad { background: var(--fail); }
   .trend .when { font-size: 11px; color: #777; margin-top: 4px; }
-  .retried { font-weight: normal; font-size: 12px; }
-    .reason { color: #c62828; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 18px 0 8px; }
+  .toolbar button { border: 1px solid var(--line); background: #fff; border-radius: 4px; padding: 5px 10px; cursor: pointer; font-size: 12px; }
+  .toolbar button.on { border-color: #1565c0; color: #1565c0; font-weight: 600; }
+  .toolbar input { border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; font-size: 12px; min-width: 180px; }
 </style>
+</head>
+<body>
 <h1>测试报告</h1>
-<p>共{{ total }}条，过{{ passed }}，挂{{ failed }}，抖{{ flaky }}，跳{{ skipped }}{% if retried %}，重跑通过 {{ retried }} 条{% endif %}，总耗时 {{ total_ms }} ms（用例合计 {{ case_sum }} ms）{% if slowest %}，最慢 {{ slowest.name }} {{ slowest.elapsed }} ms{% endif %}</p>
-<p>筛选：{{ tag }}　环境：{{ env_name }}　并发：{{ workers }}</p>
+<p class="muted">
+  {{ meta.time }}　环境 {{ meta.env }}　筛选 {{ meta.tag }}　并发 {{ meta.workers }}　版本 v{{ meta.version }}
+  {% if meta.base_url %}　被测服务 {{ meta.base_url }}{% endif %}
+</p>
+
+<div class="cards">
+  <div class="card"><b>{{ summary.total }}</b><span>共</span></div>
+  <div class="card pass"><b>{{ summary.passed }}</b><span>过</span></div>
+  <div class="card fail"><b>{{ summary.failed }}</b><span>挂</span></div>
+  <div class="card flaky"><b>{{ summary.flaky }}</b><span>抖</span></div>
+  <div class="card skip"><b>{{ summary.skipped }}</b><span>跳</span></div>
+  <div class="card"><b>{{ summary.pass_rate }}%</b><span>通过率</span></div>
+  <div class="card"><b>{{ summary.wall_ms }} ms</b><span>墙钟</span></div>
+  <div class="card"><b>{{ summary.case_sum }} ms</b><span>用例合计</span></div>
+  {% if summary.slowest %}
+  <div class="card"><b>{{ summary.slowest.elapsed_ms }} ms</b><span>最慢：{{ summary.slowest.name }}</span></div>
+  {% endif %}
+  {% if summary.retried %}
+  <div class="card"><b>{{ summary.retried }}</b><span>重跑通过</span></div>
+  {% endif %}
+</div>
+
 {% if trend %}
 <h3>最近 {{ trend | length }} 次通过率</h3>
 <div class="trend">
@@ -32,11 +81,12 @@
   {% endfor %}
 </div>
 {% endif %}
+
 {% if recent %}
 <h3>最近 {{ recent | length }} 次运行</h3>
 <table>
   <thead>
-    <tr><th>时间</th><th>环境</th><th>筛选</th><th>通过/总数</th><th>耗时</th></tr>
+    <tr><th>时间</th><th>环境</th><th>筛选</th><th>通过/总数</th><th>墙钟</th></tr>
   </thead>
   <tbody>
   {% for item in recent %}
@@ -44,62 +94,126 @@
       <td>{{ item.time }}</td>
       <td>{{ item.env }}</td>
       <td>{{ item.tag }}</td>
-      <td>{{ item.passed }}/{{ item.total }}</td>
+      <td>{{ item.passed }}/{{ item.total }}{% if item.failed %}（挂 {{ item.failed }}）{% endif %}</td>
       <td>{{ item.wall_ms }} ms</td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 {% endif %}
+
+<div class="toolbar">
+  <button class="on" data-status="ALL">全部 {{ summary.total }}</button>
+  <button data-status="FAIL">FAIL {{ summary.failed }}</button>
+  <button data-status="FLAKY">FLAKY {{ summary.flaky }}</button>
+  <button data-status="SKIP">SKIP {{ summary.skipped }}</button>
+  <button data-status="PASS">PASS {{ summary.passed }}</button>
+  <input id="q" type="search" placeholder="按用例名筛选">
+</div>
+
 <table>
   <thead>
     <tr>
+      <th style="width:44px">#</th>
       <th>用例名</th>
-      <th>判决</th>
-      <th>耗时</th>
+      <th style="width:110px">判决</th>
+      <th style="width:70px">耗时</th>
       <th>预期</th>
       <th>实际</th>
-      <th>详情</th>
+      <th style="width:64px">详情</th>
     </tr>
   </thead>
-  <tbody>
-  {% for row in results %}
-    <tr>
-      <td>{{ row.name }}</td>
-      <td class="{{ row.result }}">{{ row.result }}{% if row.retried %}<div class="retried">重跑 {{ row.retried }} 次</div>{% endif %}</td>
-      <td>{{ row.elapsed }} ms</td>
-      <td>{{ row.expect }}</td>
-      <td>{{ row.actual }}</td>
+  <tbody id="cases">
+  {% for row in rows %}
+    <tr data-status="{{ row.status }}" data-name="{{ row.name }}">
+      <td>{{ row.index }}</td>
+      <td>
+        {{ row.name }}
+        {% if row.group %}<span class="muted">（组 {{ row.group }}）</span>{% endif %}
+      </td>
+      <td class="badge {{ row.status }}">
+        {{ row.status }}
+        {% if row.cause %}<div class="cause">{{ row.status_label }}</div>{% endif %}
+        {% if row.retried %}<div class="retried">重跑 {{ row.retried }} 轮后通过</div>{% endif %}
+      </td>
+      <td>{{ row.elapsed_ms }} ms</td>
+      <td>{{ row.expect_text }}</td>
+      <td>{{ row.actual_text }}</td>
       <td>
         <details>
           <summary>展开</summary>
-          <p>{{ row.method }} {{ row.url }}</p>
-          <p>{{ row.params }}</p>
+          <p>{{ row.method }} {{ row.url }}{% if row.status_code %} → HTTP {{ row.status_code }}{% endif %}</p>
+          <p>参数 {{ row.params }}</p>
           <p>请求头 {{ row.headers }}</p>
-          {% if row.saved %}
-          <p>存变量 {{ row.saved }}</p>
-          {% endif %}
+          {% if row.saved %}<p>存变量 {{ row.saved }}</p>{% endif %}
           {% if row.reason %}
-          <p class="reason">没中：{{ row.reason }}</p>
+          <p class="{% if row.status == 'PASS' %}note{% else %}reason{% endif %}">{{ row.reason }}</p>
           {% endif %}
+          {% if row.attempts and (row.attempts | length) > 1 %}
+          <p class="muted">请求尝试</p>
           <table>
-            <thead>
-              <tr><th>断言</th><th>期望</th><th>实际</th><th>结果</th></tr>
-            </thead>
+            <thead><tr><th>#</th><th>阶段</th><th>结果</th><th>状态码</th><th>耗时</th><th>说明</th></tr></thead>
             <tbody>
-            {% for c in row.checks %}
+            {% for item in row.attempts %}
               <tr>
-                <td>{{ c.field }}</td>
-                <td>{{ c.expect }}</td>
-                <td>{{ c.actual }}</td>
-                <td>{% if c.ok %}中{% else %}没中{% endif %}</td>
+                <td>{{ item.attempt }}</td>
+                <td>{{ item.phase }}</td>
+                <td>{{ "成功" if item.ok else item.cause }}</td>
+                <td>{{ item.status_code if item.status_code is not none else "-" }}</td>
+                <td>{{ item.elapsed_ms }} ms</td>
+                <td>{{ item.message }}</td>
               </tr>
             {% endfor %}
             </tbody>
           </table>
+          {% endif %}
+          {% if row.checks %}
+          <p class="muted">断言明细</p>
+          <table>
+            <thead><tr><th>字段</th><th>算子</th><th>期望</th><th>实际</th><th>结果</th></tr></thead>
+            <tbody>
+            {% for check in row.checks %}
+              <tr>
+                <td>{{ check.field }}</td>
+                <td>{{ check.op }}</td>
+                <td>{{ check.expect }}</td>
+                <td>{{ check.actual }}</td>
+                <td>{% if check.ok %}中{% else %}没中{% endif %}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
         </details>
       </td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
+
+<script>
+(function () {
+  var buttons = Array.prototype.slice.call(document.querySelectorAll('.toolbar button'));
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#cases tr'));
+  var q = document.getElementById('q');
+  var current = 'ALL';
+  function apply() {
+    var text = (q.value || '').toLowerCase();
+    rows.forEach(function (tr) {
+      var byStatus = current === 'ALL' || tr.getAttribute('data-status') === current;
+      var byName = !text || tr.getAttribute('data-name').toLowerCase().indexOf(text) >= 0;
+      tr.style.display = byStatus && byName ? '' : 'none';
+    });
+  }
+  buttons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      current = btn.getAttribute('data-status');
+      buttons.forEach(function (other) { other.classList.toggle('on', other === btn); });
+      apply();
+    });
+  });
+  q.addEventListener('input', apply);
+})();
+</script>
+</body>
+</html>

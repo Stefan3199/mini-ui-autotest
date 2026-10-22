@@ -2,5 +2,8 @@ base_url: "http://127.0.0.1:9300"
 report_dir: "report"
 retry_count: 3
 timeout: 5
+archive_keep: 20
 headers:
   X-Token: default-token
+# 键名里包含这些片段的值在报告里打码，参数和请求头共用一份
+sensitive: [pwd, pass, token, auth, key, secret, cookie, session]

@@ -1,29 +1,52 @@
-"""被测 demo 服务：一个最小的登录接口，给 mini-ui-autotest 练手用。
+"""被测 demo 服务：给 mini-ui-autotest 练手用的最小接口集合。
 
 启动：
-    python demo/login_server.py
+    python demo/login_server.py          # 默认 127.0.0.1:9300
+    python demo/login_server.py 9400     # 换端口，并发跑测试时有用
 
 接口：
-    POST http://127.0.0.1:9300/login
-    请求体：{"user": "test001", "pwd": "right123"}
-    成功：{"ok": true, "code": 0, "token": "TOK-abc-123"}
-    失败：{"ok": false, "code": 1}
+    POST /login                 请求体 {"user","pwd"}，成功 {"ok":true,"code":0,"token":"TOK-abc-123"}
+    POST /admin/user            建临时用户
+    POST /admin/user/delete     删临时用户
+    GET  /admin/user/get?user=  查临时用户是否在
+    GET  /order                 嵌套结构：data.user / data.items / data.total
+    GET  /user                  断言用：name / roles / age
+    GET  /echo                  回显 X-Token
+    GET  /slow                  睡 3 秒，试超时和并发
+    GET  /flip                  第一次失败之后成功，试 --rerun
+    GET  /html                  返回 HTML 而不是 JSON，试「响应不是 JSON」
+    GET  /broken                返回半截 JSON，试解析失败
+    GET  /notfound              404 + JSON body
 """
 
-import time,json
+import json
+import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 USERS = {"test001": "right123"}
 TEMP_USERS = set()
 FLIP = {"count": 0}
 
 
+def _reply(handler, status, payload, content_type="application/json; charset=utf-8"):
+    body = payload.encode("utf-8") if isinstance(payload, str) else json.dumps(payload).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length).decode("utf-8") if length else "{}"
-        data = json.loads(raw)
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            data = {}
 
         if self.path == "/login":
             if USERS.get(data.get("user")) == data.get("pwd"):
@@ -41,13 +64,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        payload = json.dumps(reply).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
-
+        _reply(self, 200, reply)
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -55,12 +72,15 @@ class Handler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
 
         if path == "/notfound":
-            payload = json.dumps({"code": 404, "msg": "not found"}).encode("utf-8")
-            self.send_response(404)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+            _reply(self, 404, {"code": 404, "msg": "not found"})
+            return
+        if path == "/html":
+            # 故意返回 HTML：用来看「响应不是 JSON」怎么判
+            _reply(self, 200, "<html><body><h1>502 Bad Gateway</h1></body></html>",
+                   "text/html; charset=utf-8")
+            return
+        if path == "/broken":
+            _reply(self, 200, '{"code": 0, "msg": ', "application/json; charset=utf-8")
             return
 
         if path == "/slow":
@@ -89,16 +109,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        payload = json.dumps(reply).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
+        _reply(self, 200, reply)
+
     def log_message(self, format, *args):
         print("[demo]", format % args)
 
 
+def serve(port=9300):
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    return server
+
+
 if __name__ == "__main__":
-    print("demo 登录服务已启动: http://127.0.0.1:9300/login")
-    ThreadingHTTPServer(("127.0.0.1", 9300), Handler).serve_forever()
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 9300
+    print(f"demo 服务已启动: http://127.0.0.1:{port}")
+    serve(port).serve_forever()
