@@ -84,7 +84,7 @@ class CliArgumentTest(unittest.TestCase):
                                 "--report-dir", "report-ci", "--retry", "1",
                                 "--timeout", "0.5"])
         self.assertEqual(code, cli.EXIT_OK)
-        self.assertIn("共23条", out)
+        self.assertIn("共26条", out)
 
 
 class BackoffTest(unittest.TestCase):

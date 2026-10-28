@@ -139,11 +139,17 @@ def _finish(outcome, start, options, status, cause="", reason=""):
     return outcome
 
 
-def run_one(case, context=None, done=None, options=None, send=request_sender.send_case):
-    """跑一条用例：查依赖、替换变量、跑 setup、发主请求、跑 teardown、判三态。"""
+def run_one(case, context=None, done=None, options=None, send=request_sender.send_case,
+            fixtures=None):
+    """跑一条用例：查依赖、备 fixture、替换变量、跑 setup、发主请求、判四态。
+
+    fixture 没准备好判 SKIP，不算失败：前置的问题和用例本身的问题要分开。
+    """
     options = options or RunOptions()
     context = {} if context is None else context
     done = {} if done is None else done
+    names = list(case.get("fixtures") or [])
+    prepared = []
 
     outcome = Outcome(
         name=case["name"],
@@ -164,108 +170,135 @@ def run_one(case, context=None, done=None, options=None, send=request_sender.sen
             return _finish(outcome, start, options, SKIP, Cause.DEPENDENCY, f"依赖 {dep} 未通过")
 
     try:
-        case = variables.render(case, {**context, **(case.get("vars") or {})})
-    except variables.MissingVar as error:
-        return _finish(outcome, start, options, FAIL, Cause.VAR,
-                       f"变量 ${{{error.name}}} 没定义")
+        if names:
+            if fixtures is None:
+                return _finish(outcome, start, options, SKIP, Cause.FIXTURE,
+                               "用例引用了 fixture，但这一轮没有加载 fixture 定义")
+            context, problem = fixtures.prepare_case(names, context)
+            if problem:
+                return _finish(outcome, start, options, SKIP, Cause.FIXTURE, problem)
+            prepared = names
 
-    # 变量替换之后再生成「预期」摘要，否则参数化用例的预期列会显示 ${want} 这种模板
-    outcome.expect_text = assertion.describe_expect(case["expect"], _is_secret_field)
+        try:
+            case = variables.render(case, {**context, **(case.get("vars") or {})})
+        except variables.MissingVar as error:
+            return _finish(outcome, start, options, FAIL, Cause.VAR,
+                           f"变量 ${{{error.name}}} 没定义")
 
-    for step in case.get("setup") or []:
-        response, attempts, error = attempt_request(step, options, send, phase=f'setup:{step["name"]}')
+        # 变量替换之后再生成「预期」摘要，否则参数化用例的预期列会显示 ${want} 这种模板
+        outcome.expect_text = assertion.describe_expect(case["expect"], _is_secret_field)
+
+        for step in case.get("setup") or []:
+            response, attempts, error = attempt_request(step, options, send, phase=f'setup:{step["name"]}')
+            outcome.attempts.extend(attempts)
+            if response is None:
+                return _finish(outcome, start, options, FAIL, Cause.SETUP,
+                               f'setup 失败：{step["name"]}（{_error_text(error)}）')
+
+        response, attempts, error = attempt_request(case, options, send, phase="main")
         outcome.attempts.extend(attempts)
+
+        teardown_failed = None
+        for step in case.get("teardown") or []:
+            _, step_attempts, step_error = attempt_request(step, options, send,
+                                                           phase=f'teardown:{step["name"]}')
+            outcome.attempts.extend(step_attempts)
+            if step_error is not None and teardown_failed is None:
+                teardown_failed = f'{step["name"]}（{_error_text(step_error)}）'
+
         if response is None:
-            return _finish(outcome, start, options, FAIL, Cause.SETUP,
-                           f'setup 失败：{step["name"]}（{_error_text(error)}）')
+            return _finish(outcome, start, options, FLAKY, _cause_of(error),
+                           f"重试 {options.retry_count} 次仍未拿到响应：{_error_text(error)}")
 
-    response, attempts, error = attempt_request(case, options, send, phase="main")
-    outcome.attempts.extend(attempts)
+        outcome.status_code = response.status_code
+        outcome.body_kind = response.body_kind
+        outcome.checks = assertion.run_checks(response.status_code, response.body, case["expect"])
+        for check in outcome.checks:
+            if not masking.is_sensitive(check.field.split(".")[-1]):
+                continue
+            check.actual = masking.MASK
+            if assertion.OPS[check.op].needs_value:
+                check.expect = masking.MASK
+        outcome.actual_text = assertion.describe_actual(outcome.checks)
 
-    teardown_failed = None
-    for step in case.get("teardown") or []:
-        _, step_attempts, step_error = attempt_request(step, options, send,
-                                                       phase=f'teardown:{step["name"]}')
-        outcome.attempts.extend(step_attempts)
-        if step_error is not None and teardown_failed is None:
-            teardown_failed = f'{step["name"]}（{_error_text(step_error)}）'
+        bad = next((check for check in outcome.checks if not check.ok), None)
+        if bad is not None:
+            teardown_note = f"；另外 teardown 也失败：{teardown_failed}" if teardown_failed else ""
+            if response.body_kind == "text" and bad.field != assertion.STATUS_FIELD:
+                return _finish(outcome, start, options, FAIL, Cause.JSON,
+                               f"响应不是 JSON，断不了 {bad.field}：{response.text[:80]}{teardown_note}")
+            return _finish(outcome, start, options, FAIL, Cause.ASSERT,
+                           assertion.describe_bad(bad) + teardown_note)
+        if teardown_failed is not None:
+            return _finish(outcome, start, options, FAIL, Cause.TEARDOWN,
+                           f"teardown 失败：{teardown_failed}")
 
-    if response is None:
-        return _finish(outcome, start, options, FLAKY, _cause_of(error),
-                       f"重试 {options.retry_count} 次仍未拿到响应：{_error_text(error)}")
+        if case.get("save"):
+            for name, field_path in case["save"].items():
+                value = assertion.pick(response.body, field_path)
+                context[name] = value
+                outcome.saved[name] = masking.MASK if masking.is_sensitive(name) else value
 
-    outcome.status_code = response.status_code
-    outcome.body_kind = response.body_kind
-    outcome.checks = assertion.run_checks(response.status_code, response.body, case["expect"])
-    for check in outcome.checks:
-        if not masking.is_sensitive(check.field.split(".")[-1]):
-            continue
-        check.actual = masking.MASK
-        if assertion.OPS[check.op].needs_value:
-            check.expect = masking.MASK
-    outcome.actual_text = assertion.describe_actual(outcome.checks)
-
-    bad = next((check for check in outcome.checks if not check.ok), None)
-    if bad is not None:
-        teardown_note = f"；另外 teardown 也失败：{teardown_failed}" if teardown_failed else ""
-        if response.body_kind == "text" and bad.field != assertion.STATUS_FIELD:
-            return _finish(outcome, start, options, FAIL, Cause.JSON,
-                           f"响应不是 JSON，断不了 {bad.field}：{response.text[:80]}{teardown_note}")
-        return _finish(outcome, start, options, FAIL, Cause.ASSERT,
-                       assertion.describe_bad(bad) + teardown_note)
-    if teardown_failed is not None:
-        return _finish(outcome, start, options, FAIL, Cause.TEARDOWN,
-                       f"teardown 失败：{teardown_failed}")
-
-    if case.get("save"):
-        for name, field_path in case["save"].items():
-            value = assertion.pick(response.body, field_path)
-            context[name] = value
-            outcome.saved[name] = masking.MASK if masking.is_sensitive(name) else value
-
-    note = ""
-    if response.body_kind == "text":
-        note = "响应不是 JSON，只有状态码断言"
-    return _finish(outcome, start, options, PASS, reason=note)
+        note = ""
+        if response.body_kind == "text":
+            note = "响应不是 JSON，只有状态码断言"
+        return _finish(outcome, start, options, PASS, reason=note)
+    finally:
+        if prepared and fixtures is not None:
+            problem = fixtures.teardown_case(prepared)
+            if problem:
+                options.say(f"    fixture teardown 失败：{problem}")
 
 
-def run_serial(cases, options, send=request_sender.send_case):
+def run_serial(cases, options, send=request_sender.send_case, fixtures=None,
+               base_context=None):
     """串行通道：一条跑完再跑下一条，上下文和已完成的结果都往下传。"""
-    context, done, rows = {}, {}, []
+    context, done, rows = dict(base_context or {}), {}, []
     for case in cases:
-        row = run_one(case, context, done, options, send)
+        row = run_one(case, context, done, options, send, fixtures)
         done[case["name"]] = row
         rows.append(row)
     return rows
 
 
-def run_parallel(cases, options, send=request_sender.send_case):
-    """并发通道：线程池分发，线程之间不共享上下文；同 group 的用例互斥。"""
+def run_parallel(cases, options, send=request_sender.send_case, fixtures=None,
+                 base_context=None):
+    """并发通道：线程池分发，线程之间不共享上下文；同 group 的用例互斥。
+
+    session fixture 的值以只读副本的形式发给每个线程，线程里写的变量不会回流。
+    """
+    base = dict(base_context or {})
     if options.workers <= 1 or len(cases) <= 1:
-        return [run_one(case, {}, {}, options, send) for case in cases]
+        return [run_one(case, dict(base), {}, options, send, fixtures) for case in cases]
 
     locks = {case["group"]: Lock() for case in cases if case.get("group")}
 
     def runner(case):
         lock = locks.get(case.get("group") or "")
         if lock is None:
-            return run_one(case, {}, {}, options, send)
+            return run_one(case, dict(base), {}, options, send, fixtures)
         with lock:
-            return run_one(case, {}, {}, options, send)
+            return run_one(case, dict(base), {}, options, send, fixtures)
 
     with ThreadPoolExecutor(max_workers=options.workers) as pool:
         return list(pool.map(runner, cases))
 
 
-def run_all(cases, options=None, send=request_sender.send_case):
-    """跑完全部用例：先串行通道，再并发通道，最后按需重跑失败用例。"""
+def run_all(cases, options=None, send=request_sender.send_case, fixtures=None):
+    """跑完全部用例：先准备 session fixture，再跑两条通道，最后按需重跑失败用例。"""
     options = options or RunOptions()
+    if fixtures is not None:
+        fixtures.options = options
+        fixtures.send = send
+        fixtures.prepare_session()
+    base_context = dict(fixtures.context) if fixtures is not None else {}
+
     serial_cases = [case for case in cases if case.get("serial")]
     parallel_cases = [case for case in cases if not case.get("serial")]
 
-    rows = run_serial(serial_cases, options, send)
+    rows = run_serial(serial_cases, options, send, fixtures, base_context)
     if parallel_cases:
-        rows.extend(run_parallel(parallel_cases, options, send))
+        rows.extend(run_parallel(parallel_cases, options, send, fixtures, base_context))
 
     for round_no in range(1, options.rerun + 1):
         by_name = {row.name: row for row in rows}
@@ -276,15 +309,20 @@ def run_all(cases, options=None, send=request_sender.send_case):
         options.say(f"第{round_no}轮重跑：串行{len(failed_serial)}条，并发{len(failed_parallel)}条")
         if failed_serial:
             # 串行通道整条重跑，顺序和变量依赖都不能断
-            for row in run_serial(serial_cases, options, send):
+            for row in run_serial(serial_cases, options, send, fixtures, base_context):
                 old = by_name[row.name]
                 if old.status == FAIL and row.status == PASS:
                     old.adopt(row, round_no)
         if failed_parallel:
-            for row in run_parallel(failed_parallel, options, send):
+            for row in run_parallel(failed_parallel, options, send, fixtures, base_context):
                 old = by_name[row.name]
                 if row.status == PASS:
                     old.adopt(row, round_no)
+
+    if fixtures is not None:
+        problem = fixtures.teardown_session()
+        if problem:
+            options.say(f"session fixture teardown 失败：{problem}")
 
     rows.sort(key=lambda row: row.index)
     return rows

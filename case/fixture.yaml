@@ -1,0 +1,39 @@
+# fixture 用例：前置资源在 config/fixtures.yaml 里定义，这里只声明用哪个。
+- name: fixture 的 token 能访问订单
+  tags: [fixture]
+  fixtures: [login_token]
+  url: /order
+  method: GET
+  headers:
+    X-Token: "${token}"
+  expect:
+    - field: code
+      op: eq
+      value: 0
+    - field: data.user.name
+      op: eq
+      value: test001
+
+- name: fixture 的 token 确实发到了请求头
+  tags: [fixture]
+  fixtures: [login_token]
+  url: /echo
+  method: GET
+  headers:
+    X-Token: "${token}"
+  expect:
+    - field: x_token
+      op: eq
+      value: "${token}"
+
+- name: case 作用域 fixture 建完临时用户能查到
+  tags: [fixture]
+  fixtures: [temp_user]
+  url: /admin/user/get
+  method: GET
+  params:
+    user: tmp_fixture
+  expect:
+    - field: exists
+      op: eq
+      value: true

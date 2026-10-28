@@ -67,7 +67,7 @@ class ConfigTest(unittest.TestCase):
 class LoadCasesTest(unittest.TestCase):
     def test_total_is_23(self):
         loaded = case_loader.load_cases()
-        self.assertEqual(len(loaded.cases), 23)
+        self.assertEqual(len(loaded.cases), 26)
         self.assertEqual(loaded.warnings, [])
 
     def test_prepared_urls_and_index(self):

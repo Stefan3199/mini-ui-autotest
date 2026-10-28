@@ -11,7 +11,7 @@ import time
 import webbrowser
 from pathlib import Path
 
-from . import __version__, case_loader, report, runner
+from . import __version__, case_loader, fixtures, report, runner
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -36,6 +36,7 @@ def build_parser():
     parser.add_argument("--report-dir", dest="report_dir", help="覆盖配置里的 report_dir")
     parser.add_argument("--retry", type=int, help="覆盖 retry_count（单条请求最多尝试次数）")
     parser.add_argument("--timeout", type=float, help="覆盖默认超时秒数，用例自己写的 timeout 仍然优先")
+    parser.add_argument("--fixtures", help="fixture 文件路径，默认读 config/fixtures.yaml")
     parser.add_argument("--workers", type=int, default=1, help="并发线程数，默认 1")
     parser.add_argument("--only-failed", action="store_true", help="只跑上次失败的用例")
     parser.add_argument("--rerun", type=int, default=0, help="失败用例最多再跑几轮，默认 0")
@@ -134,8 +135,13 @@ def main(argv=None):
 
     try:
         config = case_loader.load_config(args.env, base, overrides)
-        loaded = case_loader.load_cases(args.env, strict=args.strict, base_dir=base, config=config)
-    except case_loader.CaseError as error:
+        fixture_file = Path(args.fixtures) if args.fixtures else base / config.get(
+            "fixtures_file", "config/fixtures.yaml")
+        fixture_defs = fixtures.load_fixtures(
+            fixture_file, config, config.get("headers") or {}, config.get("timeout", 5))
+        loaded = case_loader.load_cases(args.env, strict=args.strict, base_dir=base,
+                                        config=config, fixture_names=set(fixture_defs))
+    except (case_loader.CaseError, fixtures.FixtureError) as error:
         print(f"用例或配置有问题：{error}", file=sys.stderr)
         return EXIT_BAD_INPUT
 
@@ -177,7 +183,8 @@ def main(argv=None):
         sensitive=tuple(config.get("sensitive") or ()),
         retry_backoff=config.get("retry_backoff", 0),
     )
-    rows = runner.run_all(cases, options)
+    manager = fixtures.FixtureManager(fixture_defs, options) if fixture_defs else None
+    rows = runner.run_all(cases, options, fixtures=manager)
 
     wall_ms = round((time.perf_counter() - started) * 1000, 1)
     meta = {
@@ -215,4 +222,8 @@ def main(argv=None):
         return EXIT_FAILED
     if summary["flaky"]:
         return EXIT_FLAKY
+    if manager is not None and manager.failures:
+        for name, reason in manager.failures.items():
+            print(f"fixture {name} 没准备好：{reason}", file=sys.stderr)
+        return EXIT_BAD_INPUT
     return EXIT_OK

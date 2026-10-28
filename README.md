@@ -43,7 +43,8 @@
 
 **可维护**
 
-- **框架自测**：179 条单元测试，`python -m unittest` 直接跑，不依赖网络
+- **fixture**：跨用例复用的前置资源，`session` 整轮一次、`case` 每条一次，失败判 SKIP
+- **框架自测**：197 条单元测试，`python -m unittest` 直接跑，不依赖网络
 - **分层结构**：用例加载、请求发送、断言、调度、报告各管一摊，`run.py` 只是薄壳
 - **自动 CI**：push 或 PR 触发，4 个矩阵组合（3.10/3.13 × Ubuntu/Windows）
 
@@ -351,6 +352,48 @@ CSV 里全是字符串，读进来会按内容转一次：`true` / `false` 转�
 
 setup 里任何一步拿不到响应，这条用例直接判 FAIL，主请求不发；teardown 不管主请求成败都会跑，它失败也判 FAIL，因为环境没清干净会污染后面的用例。
 
+### fixture
+
+一组用例共用的前置资源，写一次，多条用例声明就行。和 setup 的区别：setup 是这条用例自己的前置，写在使用例里；fixture 是公共的，放在 `config/fixtures.yaml`。
+
+```yaml
+fixtures:
+  login_token:            # 用例里写 fixtures: [login_token]
+    scope: session        # session 整轮一次；case 每条用例一次
+    request:
+      url: /login
+      method: POST
+      params: {user: test001, pwd: "right123"}
+    save:
+      token: token        # 变量名: 响应字段路径
+    teardown:             # 可选，执行完反序跑
+      url: /logout
+      method: POST
+```
+
+用例这样用：
+
+```yaml
+- name: 用 fixture 的 token 请求订单
+  fixtures: [login_token]
+  url: /order
+  method: GET
+  headers:
+    X-Token: "${token}"
+  expect:
+    - field: code
+      op: eq
+      value: 0
+```
+
+规则：
+
+- `session` 在两条通道开跑之前执行一次，值以只读副本发给每个线程
+- `case` 每条引用它的用例执行一次，跑完执行 teardown
+- fixture 之间可以 `depends_on`，加载时拓扑排序，同时查依赖缺失和成环
+- fixture 没准备好时，引用它的用例判 `SKIP`，原因写「fixture X：…」，不计入失败数；整轮退出码 3
+- fixture 也可以写 `expect`，断言不满足同样算没准备好
+
 ### 依赖
 
 变量传递靠顺序，顺序靠文件顺序，改个文件名就可能断。`depends_on` 把这件事写到明面上：
@@ -448,6 +491,7 @@ setup 里任何一步拿不到响应，这条用例直接判 FAIL，主请求不
 | `--report-dir <目录>` | 覆盖报告目录，支持绝对路径 |
 | `--retry <N>` | 覆盖 `retry_count`，至少 1 |
 | `--timeout <秒>` | 覆盖默认超时；用例里写了自己的 `timeout` 仍然优先 |
+| `--fixtures <路径>` | 指定 fixture 文件，默认读 `config/fixtures.yaml` |
 | `--workers <N>` | 并发线程数，默认 1 |
 | `--only-failed` | 只跑上次挂的和抖的 |
 | `--rerun <N>` | 失败用例最多再跑 N 轮，默认 0 |
@@ -482,7 +526,7 @@ CI 看退出码，别去解析屏幕输出。
 
 报告里的参数和请求头在记账时脱敏：键名含 `pwd`、`pass`、`token`、`auth`、`key`、`secret`、`cookie`、`session` 的值替换成 `***`，参数和请求头用同一套规则（v0.9 里参数只认 `pwd`/`pass`，是一条不一致）。
 
-23 条用例全绿时长这样（`--workers 4`）：
+26 条用例全绿时长这样（`--workers 4`）：
 
 ![测试报告](docs/images/report.png)
 
@@ -493,9 +537,10 @@ mini-ui-autotest/
 ├── .github/
 │   └── workflows/
 │       └── test.yml       # 单测矩阵 + demo 端到端
-├── case/                  # 用例
+├── case/                  # 用例（fixture.yaml 演示 fixture 用法）
 │   └── data/              # 数据文件：login.csv、login.json
 ├── config/                # 配置
+│   ├── fixtures.yaml      # fixture 定义
 │   └── envs/              # 环境覆盖：dev、test
 ├── demo/                  # 被测 demo 服务
 ├── docs/
@@ -506,6 +551,7 @@ mini-ui-autotest/
 │   ├── request_sender.py  # 发请求，传输错误与协议错误分开抛
 │   ├── assertion.py       # 断言算子表，含嵌套字段取值
 │   ├── variables.py       # 变量替换 ${name} / ${ENV:NAME}
+│   ├── fixtures.py        # fixture 加载、作用域、依赖排序、失败判 SKIP
 │   ├── masking.py         # 参数和请求头的脱敏
 │   ├── result.py          # 判决、原因、尝试、用例结果的数据模型
 │   ├── runner.py          # 调度：单条、串行/并发通道、重跑
@@ -513,7 +559,7 @@ mini-ui-autotest/
 │   └── cli.py             # 参数解析、组装、退出码
 ├── templates/
 │   └── report.html        # 报告模板
-├── tests/                 # 框架自测（179 条）
+├── tests/                 # 框架自测（197 条）
 ├── run.py                 # 入口薄壳：from engine.cli import main
 ├── requirements.txt
 ├── CHANGELOG.md

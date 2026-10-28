@@ -25,6 +25,7 @@ class Cause:
     DEPENDENCY = "dependency"  # 依赖的用例没通过
     SETUP = "setup"            # 前置失败
     TEARDOWN = "teardown"      # 后置失败
+    FIXTURE = "fixture"        # fixture 没准备好
 
 
 # 报告里显示的中文标签，key 是 cause
@@ -38,6 +39,7 @@ CAUSE_LABELS = {
     Cause.DEPENDENCY: "依赖未通过",
     Cause.SETUP: "前置失败",
     Cause.TEARDOWN: "后置失败",
+    Cause.FIXTURE: "fixture 未就绪",
 }
 
 
