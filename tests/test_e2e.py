@@ -10,7 +10,7 @@ from pathlib import Path
 
 from tests.helpers import BASE_CONFIG, ROOT
 
-from engine import case_loader, report, runner
+from engine import __version__, case_loader, report, runner
 from engine.result import FAIL, PASS, Cause
 
 
@@ -64,6 +64,11 @@ class EndToEndTest(unittest.TestCase):
         return runner.RunOptions(quiet=True, retry_count=1,
                                  sensitive=tuple(self.config()["sensitive"]))
 
+    def fixtures_manager(self, options):
+        from engine import fixtures as fixtures_mod
+        defs = fixtures_mod.load_fixtures(ROOT / "config" / "fixtures.yaml", self.config(), {}, 5)
+        return fixtures_mod.FixtureManager(defs, options)
+
     def run_real(self, case):
         return runner.run_one(case, {}, {}, runner.RunOptions(quiet=True, retry_count=1))
 
@@ -72,8 +77,9 @@ class EndToEndTest(unittest.TestCase):
     def test_all_cases_pass_against_demo(self):
         loaded = case_loader.load_cases(config=self.config())
         cases = [case for case in loaded.cases if "slow" not in (case.get("tags") or [])]
-        self.assertEqual(len(cases), 21)
-        rows = runner.run_all(cases, self.quiet_options())
+        self.assertEqual(len(cases), 24)
+        options = self.quiet_options()
+        rows = runner.run_all(cases, options, fixtures=self.fixtures_manager(options))
         broken = [(row.name, row.status, row.reason) for row in rows if row.status != PASS]
         self.assertEqual(broken, [])
 
@@ -81,7 +87,7 @@ class EndToEndTest(unittest.TestCase):
         loaded = case_loader.load_cases(config=self.config())
         cases = [case for case in loaded.cases if "slow" not in (case.get("tags") or [])]
         options = runner.RunOptions(quiet=True, retry_count=1, workers=4)
-        rows = runner.run_all(cases, options)
+        rows = runner.run_all(cases, options, fixtures=self.fixtures_manager(options))
         self.assertTrue(all(row.status == PASS for row in rows))
 
     # ---- 非 JSON 响应的判决（v0.9 的坑）
@@ -121,7 +127,8 @@ class EndToEndTest(unittest.TestCase):
     def test_reports_are_written(self):
         loaded = case_loader.load_cases(config=self.config())
         cases = [case for case in loaded.cases if "slow" not in (case.get("tags") or [])]
-        rows = runner.run_all(cases, self.quiet_options())
+        options = self.quiet_options()
+        rows = runner.run_all(cases, options, fixtures=self.fixtures_manager(options))
         meta = {
             "time": "2026-10-22 14:00",
             "stamp": "20261022-140000",
@@ -145,7 +152,7 @@ class EndToEndTest(unittest.TestCase):
             payload = json.loads(paths["json"].read_text(encoding="utf-8"))
             self.assertEqual(payload["summary"]["total"], len(rows))
             self.assertEqual(payload["summary"]["passed"], len(rows))
-            self.assertEqual(payload["meta"]["version"], "1.0.1")
+            self.assertEqual(payload["meta"]["version"], __version__)
             self.assertTrue(payload["cases"][0]["attempts"])
 
 

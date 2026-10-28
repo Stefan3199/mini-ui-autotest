@@ -21,7 +21,7 @@ DEFAULT_ARCHIVE_KEEP = 20
 ALLOWED_KEYS = {
     "name", "tags", "url", "method", "headers", "params", "timeout",
     "expect", "save", "data", "data_file", "serial", "group",
-    "depends_on", "setup", "teardown", "sensitive", "vars",
+    "depends_on", "setup", "teardown", "sensitive", "vars", "fixtures",
 }
 
 # setup / teardown 里每一步允许出现的字段
@@ -295,6 +295,14 @@ def validate_case(case, label, strict=False, warnings=None):
             raise CaseError(f"{where}：depends_on 要是用例名或用例名列表")
         case["depends_on"] = depends_on
 
+    fixtures = case.get("fixtures")
+    if fixtures is not None:
+        if isinstance(fixtures, str):
+            fixtures = [fixtures]
+        if not isinstance(fixtures, list) or not all(isinstance(item, str) and item for item in fixtures):
+            raise CaseError(f"{where}：fixtures 要是 fixture 名或名字列表")
+        case["fixtures"] = fixtures
+
     if case.get("data") is not None and not isinstance(case["data"], list):
         raise CaseError(f"{where}：data 要是列表")
     if case.get("data_file") is not None and not isinstance(case["data_file"], str):
@@ -445,7 +453,8 @@ def prepare(case, config, default_headers, default_timeout):
 
 # ---------------------------------------------------------------- 入口
 
-def load_cases(env=None, strict=False, base_dir=None, config=None, case_dir=None):
+def load_cases(env=None, strict=False, base_dir=None, config=None, case_dir=None,
+               fixture_names=None):
     """读全部用例，返回 Loaded(cases, warnings)。"""
     base = Path(base_dir) if base_dir else Path(__file__).resolve().parents[1]
     config = config or load_config(env, base)
@@ -469,6 +478,13 @@ def load_cases(env=None, strict=False, base_dir=None, config=None, case_dir=None
     cases = expand_cases(raw_cases, base)
     cases = order_by_deps(cases)
     mark_serial_chain(cases)
+
+    if fixture_names is not None:
+        known = set(fixture_names)
+        for case in cases:
+            for name in case.get("fixtures") or []:
+                if name not in known:
+                    raise CaseError(f"用例「{case['name']}」引用了不存在的 fixture：{name}")
 
     default_headers = config.get("headers") or {}
     default_timeout = config.get("timeout", 5)

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from tests.helpers import ROOT
 
-from engine import report
+from engine import __version__, report
 from engine.result import PASS, FAIL, FLAKY, SKIP, Cause, Outcome
 
 META = {
@@ -83,7 +83,7 @@ class ResultJsonTest(unittest.TestCase):
                                      META, path)
             payload = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(payload["meta"]["tool"], "mini-ui-autotest")
-            self.assertEqual(payload["meta"]["version"], "1.0.1")
+            self.assertEqual(payload["meta"]["version"], __version__)
             self.assertEqual(payload["summary"]["total"], 4)
             self.assertEqual(payload["summary"]["slowest"], "抖")
             self.assertEqual(payload["cases"][1]["cause"], "assert")

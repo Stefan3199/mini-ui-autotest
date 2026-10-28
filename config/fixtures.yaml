@@ -1,0 +1,32 @@
+# fixture：一组用例共用的前置资源。
+# 用例里写 `fixtures: [名字]` 就能用，save 里的变量会进上下文。
+#
+# scope:
+#   session 整轮只跑一次，两条通道共用（适合登录拿 token）
+#   case    每条引用它的用例各跑一次，跑完执行 teardown（适合临时数据）
+fixtures:
+  login_token:
+    scope: session
+    request:
+      url: /login
+      method: POST
+      params:
+        user: test001
+        pwd: "right123"
+    save:
+      token: token
+
+  temp_user:
+    scope: case
+    request:
+      url: /admin/user
+      method: POST
+      params:
+        user: tmp_fixture
+    save:
+      temp_exists: exists
+    teardown:
+      url: /admin/user/delete
+      method: POST
+      params:
+        user: tmp_fixture

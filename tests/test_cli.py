@@ -41,7 +41,7 @@ class ListTest(unittest.TestCase):
     def test_lists_all_cases_with_lanes(self):
         code, out, _ = run_cli(["--list"])
         self.assertEqual(code, cli.EXIT_OK)
-        self.assertIn("共23条", out)
+        self.assertIn("共26条", out)
         self.assertIn("[串行]", out)
         self.assertIn("[并发]", out)
         self.assertIn("save 变量", out)
